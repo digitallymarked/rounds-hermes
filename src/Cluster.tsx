@@ -81,7 +81,7 @@ export const ClusterView = memo(function ClusterView({ c, cap, far, near, live, 
       }}
     >
       <Layer>
-        <div className="absolute" style={{ left: c.x, top: c.y, width: c.w, height: 96 }}>
+        <div data-flip={`c-${c.key}`} className="absolute" style={{ left: c.x, top: c.y, width: c.w, height: 96 }}>
           <button
             className="wb-z type-project absolute bottom-0 left-[-3px] flex items-baseline whitespace-nowrap text-left"
             style={{ fontSize: size, maxWidth: c.w + COL_GAP * 0.6 }}
@@ -126,6 +126,7 @@ export const ClusterView = memo(function ClusterView({ c, cap, far, near, live, 
             href={threadLink(t.id)}
             target="_blank"
             rel="noreferrer"
+            data-flip={`t-${t.id}`}
             className="group absolute flex items-center gap-2.5"
             style={{ left: x, top: y, width: Math.min(c.w, 972), height: 40, opacity: far ? 0 : 1, pointerEvents: far ? "none" : "auto", transition: "opacity 240ms var(--ease-out)" }}
             onPointerDown={(e) => e.stopPropagation()}
@@ -163,20 +164,20 @@ function GroupTitle({ g, far, colW, onTitle }: { g: Group; far: boolean; colW: n
   );
   const style: React.CSSProperties = { left: g.x, top: g.y + 34, transform: "translateY(-100%)", width: far ? colW : Math.max(g.w, 640) };
   if (g.thread && g.gone) return (
-    <button type="button" className="group absolute flex items-baseline gap-3 text-left" style={style} onPointerDown={(e) => e.stopPropagation()} onClick={() => onTitle(g)}>
+    <button type="button" className="group absolute flex items-baseline gap-3 text-left" style={style} data-flip={`g-${g.id}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => onTitle(g)}>
       {inner}
     </button>
   );
   return g.thread ? (
     <a
-      href={threadLink(g.thread)} target="_blank" rel="noreferrer" className="group absolute flex items-baseline gap-3" style={style}
+      href={threadLink(g.thread)} target="_blank" rel="noreferrer" className="group absolute flex items-baseline gap-3" style={style} data-flip={`g-${g.id}`}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && onTitle(g)) e.preventDefault(); }}
     >
       {inner}
     </a>
   ) : (
-    <div className="absolute flex items-baseline gap-3" style={style}>{inner}</div>
+    <div className="absolute flex items-baseline gap-3" style={style} data-flip={`g-${g.id}`}>{inner}</div>
   );
 }
 
@@ -209,6 +210,7 @@ function Files({ it, far, onFile, onSession }: { it: FilesSheet; far: boolean; o
   return (
     <div
       data-sheet={it.key}
+      data-flip={it.key}
       className="absolute overflow-hidden rounded-[10px] bg-[#fbfbfa]"
       style={{ left: it.x, top: it.y, width: it.dw, height: it.dh, padding: `${SHEET_PAD}px 20px`, boxShadow: "var(--shadow-tile), inset 0 0 0 0.5px rgba(21,24,29,0.12)" }}
     >
@@ -266,6 +268,7 @@ function Files({ it, far, onFile, onSession }: { it: FilesSheet; far: boolean; o
 function Note({ it, far }: { it: Note; far: boolean }) {
   return (
     <div
+      data-flip={it.key}
       className="absolute overflow-hidden rounded-[10px] bg-[#fbfbfa] px-6 py-5"
       style={{ left: it.x, top: it.y, width: it.dw, height: it.dh, boxShadow: "var(--shadow-tile), inset 0 0 0 0.5px rgba(21,24,29,0.12)" }}
     >
@@ -312,6 +315,7 @@ function Screen({ it, far, near, live, hidden, noted, fresh, label, onOpen }: {
     <button
       ref={ref}
       data-key={it.key}
+      data-flip={it.key}
       // what VoiceOver reads: the group, which kind of thing, and what's waiting on it
       aria-label={[label, it.kind === "page" ? "page" : "screen", it.more ? `${it.more} more` : "", noted ? "has notes" : "", fresh ? "new" : ""].filter(Boolean).join(", ")}
       className="press group absolute block"

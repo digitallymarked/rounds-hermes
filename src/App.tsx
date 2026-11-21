@@ -3,6 +3,7 @@ import { reducedTransparency } from "./look";
 import { clean, loadIndex, readSeen, markSeen, type Index, type Page } from "./data";
 import { layout, type Cluster, type Group } from "./layout";
 import { useCamera, fit, type Cam } from "./camera";
+import { spring } from "./motion";
 import { Stage, type Opening } from "./Stage";
 import { ClusterView, type FilesSheet } from "./Cluster";
 import { FileStage, type FileOpening } from "./FileStage";
@@ -555,6 +556,9 @@ export default function App() {
     }
     setAsOf(t);
   };
+  // where the camera was as this layout came in, before anything below moves it
+  const camAtNews = useRef<Cam | null>(null);
+  useLayoutEffect(() => { camAtNews.current = camera.now; }, [world]);
   // When the canvas re-forms for any other reason (new work arriving re-sorts the projects),
   // the project nearest the middle of the view stays where it is on screen.
   const prevWorld = useRef<typeof world>(null);
@@ -608,6 +612,35 @@ export default function App() {
     else camera.jump(r.to === "session" && world.clusters[0] ? framed(world.clusters[0]) : overview());
     updateView(camera.now);
   }, [world, findTick]);
+
+  // New work arriving: the canvas makes room for it rather than jumping. Everything in view that
+  // moved glides from where it was on screen to its new place, on a spring, and what's new grows
+  // in where it lands once there's room. A new day, a session alone or the first view re-form
+  // their own way: only the same view getting news moves like this.
+  const placedAt = useRef<{ map: Map<string, { x: number; y: number }>; asOf: number | null; chat: string | null } | null>(null);
+  useLayoutEffect(() => {
+    const w = worldEl.current;
+    if (!w || !world) return;
+    const els = [...w.querySelectorAll<HTMLElement>("[data-flip]")];
+    const map = new Map(els.map((el) => [el.dataset.flip!, { x: el.offsetLeft, y: el.offsetTop }]));
+    const was = placedAt.current, cb = camAtNews.current, c = camera.now;
+    placedAt.current = { map, asOf, chat };
+    if (!was || !cb || was.asOf !== asOf || was.chat !== chat || !placed.current || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const near = (p: { x: number; y: number }, k: Cam) => {
+      const sx = p.x * k.z + k.x, sy = p.y * k.z + k.y;
+      return sx > -innerWidth * 0.5 && sx < innerWidth * 1.5 && sy > -innerHeight * 0.5 && sy < innerHeight * 1.5;
+    };
+    const move = spring(0.45, 620), grow = spring(0.4, 520);
+    for (const el of els) {
+      const k = el.dataset.flip!, now = map.get(k)!, then = was.map.get(k);
+      if (!then) { if (near(now, c)) el.animate([{ opacity: 0, scale: "0.94" }, { opacity: 1, scale: "1" }], { duration: 520, delay: 280, easing: grow, fill: "backwards" }); continue; }
+      if (!near(now, c) && !near(then, cb)) continue;
+      // from where it was on screen, in the world's own units
+      const dx = (then.x * cb.z + cb.x - (now.x * c.z + c.x)) / c.z, dy = (then.y * cb.z + cb.y - (now.y * c.z + c.y)) / c.z;
+      if (Math.abs(dx * c.z) < 0.5 && Math.abs(dy * c.z) < 0.5) continue;
+      el.animate([{ translate: `${dx}px ${dy}px` }, { translate: "0px 0px" }], { duration: 620, easing: move });
+    }
+  }, [world]);
 
   // Days that had work, newest first: the stack behind the sheet.
   const activeDays = useMemo(() => {
