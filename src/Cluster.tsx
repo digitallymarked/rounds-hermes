@@ -285,6 +285,10 @@ function Note({ it, far }: { it: Note; far: boolean }) {
   );
 }
 
+// Pictures already decoded once: a tile that shows one again paints it in the same frame, rather
+// than leaving the frame blank while the browser decodes it again on its own time.
+const decoded = new Set<string>();
+
 function Screen({ it, far, near, live, hidden, noted, fresh, label, onOpen }: {
   it: Shown; far: boolean; near: boolean; live: boolean; hidden: boolean; noted: boolean; fresh: boolean; label: string; onOpen: (el: HTMLElement) => void;
 }) {
@@ -300,7 +304,7 @@ function Screen({ it, far, near, live, hidden, noted, fresh, label, onOpen }: {
     if (want === src || !live) { if (!live) setSrc(want); return; }
     let on = true;
     const im = new Image(); im.src = want;
-    im.decode().catch(() => {}).then(() => { if (on) setSrc(want); });
+    im.decode().then(() => decoded.add(want), () => {}).then(() => { if (on) setSrc(want); });
     return () => { on = false; };
   }, [want, live]);
   const r = 10;
@@ -334,8 +338,8 @@ function Screen({ it, far, near, live, hidden, noted, fresh, label, onOpen }: {
           src={src}
           alt=""
           draggable={false}
-          decoding="async"
-          onLoad={() => setLoaded(true)}
+          decoding={decoded.has(src) ? "sync" : "async"}
+          onLoad={() => { decoded.add(src); setLoaded(true); }}
           className="h-full w-full object-cover object-top"
           style={{ opacity: loaded ? 1 : 0, transition: "opacity 420ms var(--ease-out)" }}
         />}
