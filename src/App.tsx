@@ -357,9 +357,38 @@ export default function App() {
     const c = camera.now;
     // momentum, projected the way a scroll view decelerates; a hand held still before letting go
     // throws nothing
-    if (performance.now() - d.t > 100) return;
+    const still = performance.now() - d.t > 100;
+    const vx = still ? 0 : d.vx, vy = still ? 0 : d.vy; // px per ms
     const proj = (v: number) => (v * 0.998) / (1 - 0.998);
-    camera.glide({ ...c, x: c.x + proj(d.vx), y: c.y + proj(d.vy) });
+    // and never so far that the work leaves the window: some project always stays under the
+    // middle of it. A throw that would go past that stops short; a canvas dragged off its work
+    // comes back to the nearest of it.
+    const px = proj(vx), py = proj(vy);
+    let to = { x: c.x + px, y: c.y + py };
+    if (world?.clusters.length) {
+      const box = (k: Cluster, x: number, y: number) => ({ l: k.x * c.z + x, t: k.y * c.z + y, r: (k.x + k.w) * c.z + x, b: (k.y + k.h) * c.z + y });
+      const covers = (x: number, y: number) => world.clusters.some((k) => {
+        const q = box(k, x, y);
+        return q.r > innerWidth * 0.3 && q.l < innerWidth * 0.7 && q.b > innerHeight * 0.3 && q.t < innerHeight * 0.7;
+      });
+      if (!covers(to.x, to.y)) {
+        if (covers(c.x, c.y)) {
+          let lo = 0, hi = 1;
+          for (let k = 0; k < 14; k++) { const m = (lo + hi) / 2; if (covers(c.x + px * m, c.y + py * m)) lo = m; else hi = m; }
+          to = { x: c.x + px * lo, y: c.y + py * lo };
+        } else {
+          const mx = innerWidth / 2, my = innerHeight / 2;
+          const at = world.clusters.map((k) => { const q = box(k, c.x, c.y); const nx = Math.min(q.r, Math.max(q.l, mx)), ny = Math.min(q.b, Math.max(q.t, my)); return { nx, ny, d: Math.hypot(nx - mx, ny - my) }; }).sort((a, b) => a.d - b.d)[0];
+          to = { x: c.x + (mx - at.nx), y: c.y + (my - at.ny) };
+        }
+      }
+    }
+    const dx = to.x - c.x, dy = to.y - c.y, dist = Math.hypot(dx, dy), speed = Math.hypot(vx, vy) * 1000;
+    if (dist < 0.5) return;
+    // coasting the way it was thrown: it leaves at the hand's own speed, and a throw cut short
+    // by the edge slows sooner rather than leaving faster
+    if (speed > 1 && dx * vx + dy * vy > 0) camera.throw({ ...c, ...to }, Math.min(0.5, Math.max(0.12, dist / speed)));
+    else camera.glide({ ...c, ...to });
   };
   const suppressClick = () => !!drag.current?.moved || !!drag.current?.space || !!drag.current?.caught || space || tool === "hand";
 
