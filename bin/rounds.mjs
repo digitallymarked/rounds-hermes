@@ -85,6 +85,12 @@ if (rest.includes("--demo")) {
       x.at += shift;
       fs.writeFileSync(file, JSON.stringify(x, null, 1));
     }
+    const edits = path.join(demo, "store", "edits");
+    if (fs.existsSync(edits)) for (const f of fs.readdirSync(edits)) {
+      const file = path.join(edits, f), x = JSON.parse(fs.readFileSync(file, "utf8"));
+      for (const list of Object.values(x)) for (const e of list) e.at += shift;
+      fs.writeFileSync(file, JSON.stringify(x));
+    }
     const notes = path.join(demo, "comments.json");
     if (fs.existsSync(notes)) {
       const list = JSON.parse(fs.readFileSync(notes, "utf8"));

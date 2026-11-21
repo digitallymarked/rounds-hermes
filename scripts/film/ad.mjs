@@ -1,5 +1,5 @@
 // The ad's footage: short takes of the real demo canvas, each exactly a beat or two long (a beat
-// is 30 frames at 120 bpm), with the camera close on what happens. The cut (ad-cut.py) lays them
+// is 25 frames at 144 bpm), with the camera close on what happens. The cut (ad-cut.py) lays them
 // on the beat between the words.
 //   FILM_HOME=<the film server's demo folder> node scripts/film/ad.mjs <desktop|phone> <out dir> [take names]
 import path from "node:path";
@@ -15,7 +15,7 @@ const VIEWS = {
   phone: { width: 864, height: 1080, scale: 2.5, out: [1080, 1350] },
 };
 const V = VIEWS[view];
-const B = 30; // frames in a beat
+const B = 25; // frames in a beat
 
 await holdBack(HOME, URL);
 const note = heldNote(HOME);
@@ -142,31 +142,29 @@ async function drift(name, hash, z, dx = 0.08, keepRight = false) {
 }
 // the sunset's right-hand neighbour is the site's profile card, with its words: kept out of frame
 await drift("sky", "c090c3510b86a43d", 0.9, -0.06, true);
-await drift("top20", "28fec8d929ee0210", 0.9, -0.08);
+await drift("dawn", "1debfdc9003ef0a5", 0.9, -0.08);
 await drift("night", "21205856b3f603cb", 0.9);
 
-// F5, a beat: a screen flies open; F6, two beats: its before and after, the divider across and back
+// F5, a beat: the Top 20 creator flies open; F6, two beats: a step to its phone screen, the
+// desktop folding into the phone
 {
-  await goTo(roadTop, view === "phone" ? 0.5 : 0.42, { x: V.width * 0.42, y: V.height * 0.42 });
-  const play = await rect(byHash("ea6513ee246aded2"));
-  await film.place(play.cx + 60, play.cy + 40);
+  const T20 = byHash("748b844aa29dbab6");
+  await goTo(() => rect(T20), view === "phone" ? 0.5 : 0.42, { x: V.width * 0.34, y: V.height * 0.58 });
+  const t = await rect(T20);
+  await film.place(t.cx + 60, t.cy + 40);
   await film.pointer(true);
-  await film.place(play.cx, play.cy);
+  await film.place(t.cx, t.cy);
   await film.click(2);
   await film.wait(2, { shoot: false });
+  await film.pointer(false);
   await take("open", B, async () => {});
-  await film.wait(20, { shoot: false });
-  const box = await stageBox();
-  const y = box.y + box.h * 0.5;
-  await film.place(box.x + 22, y);
-  film.cam = film.frame({ x: box.x, y: box.y, w: box.w, h: box.h }, 1.04);
+  await film.wait(30, { shoot: false });
+  film.cam = { x: 0, y: 0, w: V.width };
   push(0.95, 2 * B);
-  await take("wipe", 2 * B, async () => {
-    await page.mouse.down();
-    await film.move(box.x + box.w * 0.7, y, 26);
+  await take("morph", 2 * B, async () => {
     await film.wait(5);
-    await film.move(box.x + box.w * 0.04, y, 24);
-    await page.mouse.up();
+    await page.keyboard.press("ArrowRight");
+    await tick();
   });
   await page.keyboard.press("Escape");
   await film.wait(40, { shoot: false });
@@ -175,6 +173,8 @@ await drift("night", "21205856b3f603cb", 0.9);
 // F7, a beat: a pin drops on Shadowfax; F8, two beats: the note's last words, and it's sent
 let pinAt;
 {
+  await goTo(roadTop, view === "phone" ? 0.5 : 0.42, { x: V.width * 0.42, y: V.height * 0.42 });
+  await film.pointer(true);
   const rohan = await rect(byHash("e11a04d093b56d46"));
   if (rohan.cy > V.height * 0.8 || rohan.cy < 0) await film.pan(rohan.cx, rohan.cy, rohan.cx, V.height * 0.5, 10);
   const r2 = await rect(byHash("e11a04d093b56d46"));
@@ -219,7 +219,7 @@ let pinAt;
   await take("answer", B, async () => {});
 }
 
-// F10, a beat: the fix lands on the canvas, lit; F11, two beats: it opens, Shadowfax white
+// F10, two beats: the fix lands on the canvas off camera and opens, Shadowfax white
 {
   await page.keyboard.press("Escape");
   await film.wait(40, { shoot: false });
@@ -228,10 +228,7 @@ let pinAt;
   land(HOME, await page.evaluate(() => Date.now()), FIX);
   await film.pollIn(5);
   const r = await textRect("The Road");
-  film.cam = film.frame({ x: r.x - 20, y: r.y - 10, w: r.w * 3.4, h: r.h * 6.5 }, 1.05);
-  push(0.93, B);
-  await take("fix", B, async () => {});
-  await film.wait(60, { shoot: false });
+  await film.wait(B + 60, { shoot: false });
   const pair = await rect(byHash("778cf7acce459ada"));
   await film.place(pair.cx, pair.cy);
   await film.click(4);
@@ -247,52 +244,151 @@ let pinAt;
   await film.wait(40, { shoot: false });
 }
 
-// F12, a beat: the canvas becomes today's sheet; F13, two beats: a flick back through the months;
-// F14, two beats: July, and in on the Tour
+// F11, a beat: a search for Murmur; F12, two beats: the canvas holds only that session
 {
   await page.keyboard.press("0");
   await film.wait(60, { shoot: false });
-  await film.place(V.width * 0.5, V.height * 0.6);
+  await film.pointer(false);
+  await page.keyboard.press("/");
+  await film.wait(30, { shoot: false });
+  await page.keyboard.type("Mu");
+  await film.wait(12, { shoot: false });
+  const box = await rect('[role="dialog"][aria-label="Search"]');
+  film.cam = film.frame(box, 1.12);
+  push(0.95, B);
+  await take("find", B, async () => {
+    await film.wait(3);
+    for (const ch of "rmur") { await page.keyboard.type(ch); await film.wait(3); }
+  });
+  film.cam = { x: 0, y: 0, w: V.width };
+  push(0.96, 2 * B);
+  await take("alone", 2 * B, async () => {
+    await page.keyboard.press("Enter");
+    await tick();
+  });
+}
+
+// F13, a beat: in close on its files sheet, a file tapped; F14, two beats: the sheet grows into
+// the page of every change the session made to it
+{
+  await film.wait(40, { shoot: false });
+  await goTo(() => rect("[data-sheet]"), view === "phone" ? 1.5 : 1.3, { x: V.width * 0.5, y: V.height * 0.5 });
+  const sheet = await rect("[data-sheet]");
+  const row = await page.evaluate(() => {
+    const b = [...document.querySelectorAll("[data-sheet] button")].find((x) => /^README\.md,/.test(x.getAttribute("aria-label") || ""));
+    const r = b.getBoundingClientRect(); return { cx: r.x + r.width * 0.3, cy: r.y + r.height / 2 };
+  });
+  await film.place(sheet.x + sheet.w * 0.75, sheet.y + sheet.h * 0.95);
+  await film.pointer(true);
+  await film.wait(10, { shoot: false });
+  film.cam = film.frame(sheet, 1.2);
+  push(0.95, B);
+  // the press is on camera; it lets go after the cut, so the sheet grows in the next shot
+  await take("sheet", B, async () => {
+    await film.move(row.cx, row.cy, 18);
+    await film.wait(3);
+    await page.mouse.down();
+  });
+  await page.mouse.up();
+  await film.tick({ shoot: false });
+  await film.pointer(false);
+  // in partway through the grow: the page is blank until it has its size, then the lines come in
+  await film.wait(14, { shoot: false });
+  film.cam = { x: 0, y: 0, w: V.width };
+  // three beats: the ad uses the first two
+  push(0.94, 3 * B);
+  await take("page", 3 * B, async () => {});
+  await film.wait(30, { shoot: false });
+  await page.keyboard.press("Escape");
+  await film.wait(40, { shoot: false });
+  // and everyone's work back
+  await page.keyboard.press("Escape");
+  await film.wait(60, { shoot: false });
+}
+
+// F15, a beat: the canvas becomes today's sheet, the days before stacked behind it; F16, two
+// beats: back a day on each beat; F17, a beat: a flick back through the months; F18, two beats:
+// July, the Tour's whole day
+{
+  // the canvas as anyone opening it sees it: with the camera not yet moved, each earlier day is
+  // fitted to the window (moved, the project in the middle holds its place and size instead)
+  await page.reload({ waitUntil: "load" });
+  await film.settle(150);
+  await film.pointer(false);
   await take("stack", B, async () => {
     await page.keyboard.press("t");
     await tick();
   });
-  await film.wait(10, { shoot: false });
-  await film.pointer(true);
-  await film.place(V.width - 62, V.height * 0.42);
+  await film.wait(30, { shoot: false });
+  await take("days", 2 * B, async () => {
+    await page.keyboard.press("ArrowLeft");
+    await film.wait(B);
+    await page.keyboard.press("ArrowLeft");
+    await tick();
+  });
+  await film.wait(30, { shoot: false });
+  const rail = await rect('[role="slider"][aria-label="Day"]');
+  await film.place(rail.cx, V.height * 0.42);
   await film.tick({ shoot: false });
   const days = await page.evaluate((target) => {
     const shown = document.querySelector('[role="slider"][aria-label="Day"]').getAttribute("aria-valuetext").split(" ").slice(1).join(" ");
     return Math.round((new Date(`${shown} ${new Date().getFullYear()} 12:00`) - new Date(`${target} 12:00`)) / 864e5);
-  }, "2026-07-18");
-  film.cam = { x: V.width * 0.04, y: 0, w: V.width * 0.92 };
-  push(0.96, 2 * B);
-  await take("flick", 2 * B, async () => {
-    const N = 46, px = days * 14, w = Array.from({ length: N }, (_, i) => Math.pow(1 - i / N, 1.6)), sum = w.reduce((a, b) => a + b, 0);
+  }, process.env.FILM_JULY || "2026-07-05");
+  console.log(view, "flick back", days, "days");
+  await take("flick", B, async () => {
+    const N = B - 2, px = days * 14, w = Array.from({ length: N }, (_, i) => Math.pow(1 - i / N, 1.6)), sum = w.reduce((a, b) => a + b, 0);
     let sent = 0, acc = 0;
     for (let i = 0; i < N; i++) { acc += w[i]; const goal = Math.round((acc / sum) * px); await film.wheel(-(goal - sent)); sent = goal; await tick(); }
   });
-  await film.wait(30, { shoot: false });
-  // in on the Tour, about the point that ends with all of it in frame: its name clear of the
-  // earlier days' edges above, its gallery clear of the dock, centred across
-  const tour = await textRect("Le Tour");
-  const box = await page.evaluate((t) => {
-    const rs = [...document.querySelectorAll(".will-change-transform [data-key]")].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.left >= t.x - 5 && r.top > t.y);
-    let sheet = document.querySelector(".origin-top-left.will-change-transform");
-    while (sheet && !String(sheet.style.background).includes("--wall")) sheet = sheet.parentElement;
-    return { right: Math.max(...rs.map((r) => r.right)), bottom: Math.max(...rs.map((r) => r.bottom)), sheetTop: sheet ? sheet.getBoundingClientRect().top : 0 };
-  }, tour);
-  // the camera ends 0.8832 of the width wide, centred at 0.46 of the height
-  const T = Math.max(box.sheetTop + V.height * 0.05, V.height * 0.08), Bm = V.height * 0.84;
-  const f = Math.min(view === "phone" ? 2.2 : 2.6, (Bm - T) / (box.bottom - tour.y));
-  const yc = (T + Bm) / 2, cy = (tour.y + box.bottom) / 2, cx = (tour.x + box.right) / 2;
-  const px = Math.min(V.width - 200, Math.max(40, (V.width / 2 - f * cx) / (1 - f))), py = (yc - f * cy) / (1 - f);
-  console.log(view, "july", { f: f.toFixed(2), px: Math.round(px), py: Math.round(py), sheetTop: Math.round(box.sheetTop) });
-  await film.place(px, py);
+  // the day settles and its screens load sharp
+  await film.wait(70, { shoot: false });
+  console.log(view, "july is", await page.evaluate(() => document.querySelector('[role="slider"][aria-label="Day"]').getAttribute("aria-valuetext")));
+  film.cam = { x: 0, y: 0, w: V.width };
+  push(0.9, 2 * B);
+  await take("july", 2 * B, async () => {});
+}
+
+// For the film of what's new in 1.1. F19, a beat: in the timeline, today's sheet, a group's title
+// tapped; F20, two beats: the canvas narrows to that one session, landing on the group; F21,
+// three beats: down through the session's whole history, newest first
+{
+  // a fresh canvas again: the timeline's sheet fitted to the window
+  await page.reload({ waitUntil: "load" });
+  await film.settle(150);
   await film.pointer(false);
-  film.cam = { x: V.width * 0.04, y: 0, w: V.width * 0.92 };
-  await take("july", 2 * B, async () => {
-    await film.pinch(f, 2 * B - 8);
+  await page.keyboard.press("t");
+  await film.wait(60, { shoot: false });
+  const title = await page.evaluate(() => {
+    const a = [...document.querySelectorAll(".will-change-transform a, .will-change-transform button")].find((e) => e.textContent.trim().startsWith("Rohan and the Pelennor"));
+    const t = a.querySelector("span").getBoundingClientRect();
+    return { x: t.x, y: t.y, w: t.width, h: t.height, cx: t.x + t.width * 0.45, cy: t.y + t.height / 2 };
+  });
+  const road = await textRect("The Road");
+  await film.place(title.cx + 160, title.cy + 120);
+  await film.pointer(true);
+  await film.wait(10, { shoot: false });
+  // close on The Road's column: its name, the title and the screens under it
+  film.cam = film.frame({ x: road.x - 30, y: road.y - 20, w: Math.max(title.w * 2.2, road.w * 2.6), h: (title.y - road.y) + title.h * 9 }, 1.05);
+  push(0.95, B);
+  await take("tap", B, async () => {
+    await film.move(title.cx, title.cy, 18);
+    await film.wait(3);
+    await page.mouse.down();
+  });
+  await page.mouse.up();
+  await film.tick({ shoot: false });
+  await film.pointer(false);
+  await film.wait(4, { shoot: false });
+  film.cam = { x: 0, y: 0, w: V.width };
+  push(0.96, 2 * B);
+  await take("focused", 2 * B, async () => {});
+  await film.wait(20, { shoot: false });
+  await film.place(V.width * 0.5, V.height * 0.5);
+  await take("history", 3 * B, async () => {
+    // a steady scroll down the session, easing in and out
+    const N = 3 * B - 4, px = view === "phone" ? 1500 : 1250, e = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+    let sent = 0;
+    for (let i = 1; i <= N; i++) { const goal = Math.round(px * e(i / N)); await film.wheel(goal - sent); sent = goal; await tick(); }
   });
 }
 

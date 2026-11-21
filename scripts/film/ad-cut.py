@@ -1,27 +1,43 @@
-# The ad: words and takes laid end to end on the beat (a beat is 30 frames at 120 bpm), hard cuts,
+# The ad: words and takes laid end to end on the beat (a beat is 25 frames at 144 bpm), hard cuts,
 # over the track from score.mjs.
-#   python3 scripts/film/ad-cut.py <desktop|phone> <takes dir> <paper.mp4> <score.wav> <out.mp4>
+#   python3 scripts/film/ad-cut.py <desktop|phone> <takes dir> <paper.mp4> <score.wav> <out.mp4> [ad|updates]
 import os, re, subprocess, sys
 
 view, SRC, PAPER, SCORE, OUT = sys.argv[1:6]
+CUT = sys.argv[6] if len(sys.argv) > 6 else "ad"
 W, H = (1920, 1080) if view == "desktop" else (1080, 1350)
-B = 30
-TMP = os.path.join(SRC, f"cut-{view}")
+B = 25
+TMP = os.path.join(SRC, f"cut-{CUT}-{view}")
 os.makedirs(TMP, exist_ok=True)
 ENC = ["-c:v", "libx264", "-preset", "slow", "-crf", "12", "-pix_fmt", "yuv420p", "-r", "60"]
 
-# what plays, beat by beat: a word (w), a take, or the end (m)
-SEQ = [
-    ("w1", 1), ("w2", 1), ("w3", 2),
-    ("reveal", 4),
-    ("lands", 1), ("sky", 1), ("top20", 1), ("night", 1),
-    ("w4", 1), ("open", 1), ("wipe", 2),
-    ("w5", 1), ("pin", 1), ("note", 2),
-    ("w6", 1), ("answer", 1), ("fix", 1), ("pair", 2),
-    ("w7", 1), ("stack", 1), ("flick", 2),
-    ("w8", 1), ("july", 2),
-    ("end", 12),
-]
+# what plays, beat by beat: a word (w, u), a take, or the end; the ad, and the film of what's new in 1.1
+CUTS = {
+    "ad": [
+        ("w1", 1), ("w2", 1), ("w3", 2),
+        ("reveal", 4),
+        ("lands", 1), ("sky", 1), ("dawn", 1), ("night", 1),
+        ("w4", 1), ("open", 1), ("morph", 2),
+        ("w5", 1), ("pin", 1), ("note", 2),
+        ("w6", 1), ("answer", 1), ("pair", 2),
+        ("w7", 1), ("find", 1), ("alone", 2),
+        ("w8", 1), ("sheet", 1), ("page", 2),
+        ("w9", 1), ("stack", 1), ("days", 2),
+        ("w10", 1), ("flick", 1), ("july", 2),
+        ("end", 12),
+    ],
+    "updates": [
+        ("u1", 1), ("u2", 1), ("u3", 2),
+        ("reveal", 4),
+        ("u4", 1), ("find", 1), ("alone", 2),
+        ("u5", 1), ("sheet", 1), ("page", 2),
+        ("u6", 1), ("open", 1), ("morph", 2),
+        ("u7", 1), ("stack", 1), ("days", 2),
+        ("u8", 1), ("flick", 1), ("july", 2),
+        ("end", 12),
+    ],
+}
+SEQ = CUTS[CUT]
 
 
 def run(args):
@@ -32,7 +48,7 @@ parts, paper_at = [], 0.3
 for i, (name, beats) in enumerate(SEQ):
     n = beats * B
     out = f"{TMP}/{i:02d}-{name}.mp4"
-    if re.fullmatch(r"w\d|end", name):
+    if re.fullmatch(r"[wu]\d+|end", name):
         # the paper, a different stretch of it each time, with the words drawn frame by frame on it
         seq = os.path.join(SRC, f"{view}-{name}", "%04d.png")
         run(["-ss", f"{paper_at:.3f}", "-i", PAPER, "-framerate", "60", "-i", seq, "-frames:v", str(n), "-filter_complex",

@@ -53,7 +53,7 @@ export class Film {
   // push in renders the page sharper rather than enlarging pixels.
   clip() {
     const { x, y, w } = this.cam;
-    if (w >= this.width - 0.01 && Math.abs(x) < 0.01 && Math.abs(y) < 0.01) return {};
+    // the whole window too goes through a clip: asked without one, Chrome hands back one pixel per point
     return { clip: { x, y, width: w, height: (w * this.height) / this.width, scale: (this.scale * this.width) / w } };
   }
   // ease the camera to frame a box (cx, cy at the centre, w wide), over n frames

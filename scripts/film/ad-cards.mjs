@@ -8,16 +8,25 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
-const [view = "desktop", OUT] = process.argv.slice(2);
+const [view = "desktop", OUT, CUT = "ad"] = process.argv.slice(2);
 const [W, H] = view === "desktop" ? [1920, 1080] : [1080, 1350];
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const B = 30;
-// name, words, beats on screen (as in ad-cut.py)
-export const WORDS = [
-  ["w1", "Everything", 1], ["w2", "you make", 1], ["w3", "with Claude.", 2],
-  ["w4", "Open anything.", 1], ["w5", "Pin a note.", 1], ["w6", "Claude fixes it.", 1],
-  ["w7", "Go back", 1], ["w8", "to any day.", 1],
-];
+const B = 25; // frames in a beat, at 144 bpm
+// name, words, beats on screen (as in ad-cut.py): the ad, and the film of what's new in 1.1
+const CUTS = {
+  ad: [
+    ["w1", "Everything", 1], ["w2", "you make", 1], ["w3", "with Claude.", 2],
+    ["w4", "Open anything.", 1], ["w5", "Pin a note.", 1], ["w6", "Claude fixes it.", 1],
+    ["w7", "Find any session.", 1], ["w8", "See every change.", 1],
+    ["w9", "Go back", 1], ["w10", "to any day.", 1],
+  ],
+  updates: [
+    ["u1", "What\u2019s new", 1], ["u2", "in Rounds", 1], ["u3", "1.1", 2],
+    ["u4", "Find any session.", 1], ["u5", "See every change.", 1], ["u6", "Desktop to phone.", 1],
+    ["u7", "Go back", 1], ["u8", "to any day.", 1],
+  ],
+};
+export const WORDS = CUTS[CUT];
 const END = 12; // beats
 const mark = fs.readFileSync(path.join(HERE, "../../docs/rounds-mark.svg"), "utf8");
 const mono = `data:font/woff2;base64,${fs.readFileSync(path.join(HERE, "../../public/fonts/GeistMono-Variable.woff2")).toString("base64")}`;

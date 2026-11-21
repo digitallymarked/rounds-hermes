@@ -10,6 +10,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { demoEdits, demoVersion } from "./demo-edits.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "demo");
@@ -270,6 +271,7 @@ fs.writeFileSync(path.join(OUT, "config.json"), JSON.stringify({
 const newest = Math.max(...posts.map((p) => p.at));
 // the newest work lands about an hour before whenever someone opens the demo
 fs.writeFileSync(path.join(OUT, "generated"), String(newest + 3600e3));
-fs.writeFileSync(path.join(OUT, "version"), sha16(JSON.stringify(posts) + JSON.stringify(notes)));
+const edits = demoEdits(OUT);
+fs.writeFileSync(path.join(OUT, "version"), demoVersion(OUT));
 const bytes = fs.readdirSync(path.join(OUT, "store/img")).filter((f) => !f.endsWith(".json")).reduce((n, f) => n + fs.statSync(path.join(OUT, "store/img", f)).size, 0);
-console.log(`demo/: ${posts.length} moments, ${notes.length} notes, ${kept.size} screens, ${(bytes / 1e6).toFixed(1)} MB`);
+console.log(`demo/: ${posts.length} moments, ${notes.length} notes, ${kept.size} screens, ${edits.files} changed files, ${(bytes / 1e6).toFixed(1)} MB`);
