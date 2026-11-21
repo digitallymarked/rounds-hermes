@@ -40,11 +40,14 @@ Step back to any day to see what was made on it.
 
 ![Earlier days stacked behind the current one](docs/canvas-time.jpg)
 
-Search a session by name to see everything it made, newest first.
+Search a session by name, or tap a group's title in the timeline, to see only that session's
+work, newest first.
 
-Each session's files sit beside its screens, every change line by line, with any other session that changed the same file.
+The files a session changed sit on a sheet beside its screens. Open one to read every change
+line by line, and to see which other sessions changed it too.
 
-Claude Code deletes terminal sessions after 30 days by default. What they made stays on your canvas.
+Claude Code deletes terminal sessions after 30 days by default. What they made stays on your
+canvas, and so does every page they published, even after its folder is cleared.
 
 ## Set it up
 
@@ -62,7 +65,8 @@ open the canvas:
 npx github:krispuckett/rounds
 ```
 
-This also updates Rounds, hooks included, whenever there's a new version.
+This also updates Rounds, hooks included, whenever there's a new version. If you set it up
+before 1.1, run `init` once more so it keeps every page your sessions publish.
 
 To take it all out:
 
@@ -83,7 +87,8 @@ name and file names.
 
 Sessions post with `rounds_post` and `rounds_change`, read notes with `rounds_notes` and answer
 them with `rounds_reply`. One hook brings each session its notes with your next message. The
-other ties posts to their session and notices pushes to main.
+other ties posts to their session, keeps a copy of each page a session publishes, and notices
+pushes to main.
 
 In auto mode, Claude Code may ask you before acting on a note. Say yes and it carries on.
 
