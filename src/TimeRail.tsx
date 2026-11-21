@@ -44,7 +44,19 @@ export function TimeRail({ index, asOf, open, onDay, onClose }: {
   }, [index]);
 
   const shownK = asOf == null ? 0 : Math.max(0, Math.round((endOfDay(new Date()) - asOf) / DAY));
-  const s = useRef({ d: shownK, target: shownK, ppd: 14, dragging: false, committed: shownK, lastCommit: 0, hover: null as number | null, following: false });
+  // the rail comes to rest only on today and on days with work: in between, the canvas holds the
+  // last day it passed that had any
+  const has = (k: number) => k === 0 || load[k] > 0;
+  // the day with work nearest d, looking first the way it was going (1 is older)
+  const work = (d: number, dir = 0) => {
+    const r = Math.round(Math.max(0, Math.min(span, d)));
+    for (let i = 0; i <= span; i++) for (const k of dir < 0 ? [r - i, r + i] : [r + i, r - i]) if (k >= 0 && k <= span && has(k)) return k;
+    return r;
+  };
+  // the next day with work from k, one way
+  const next = (k: number, dir: number) => { for (let j = k + dir; j >= 0 && j <= span; j += dir) if (has(j)) return j; return k; };
+  // tau: how quickly it settles; after a throw, as quickly as keeps the speed it was let go at
+  const s = useRef({ d: shownK, target: shownK, tau: 0.14, ppd: 14, dragging: false, committed: shownK, lastCommit: 0, hover: null as number | null, following: false });
   const canvas = useRef<HTMLCanvasElement>(null);
   const raf = useRef(0);
   const [label, setLabel] = useState(shownK);
@@ -59,6 +71,7 @@ export function TimeRail({ index, asOf, open, onDay, onClose }: {
     // passed on the way, or the canvas would be pulled back through each of them
     st.committed = shownK;
     st.target = shownK;
+    st.tau = 0.14;
     if (!open) { st.d = shownK; setLabel(shownK); draw(); return; }
     st.following = true;
     kick();
@@ -159,13 +172,13 @@ export function TimeRail({ index, asOf, open, onDay, onClose }: {
     const st = s.current;
     const dt = Math.min(0.05, (now - (last.current || now)) / 1000 || 1 / 60);
     last.current = now;
-    st.d += (st.target - st.d) * (1 - Math.exp(-dt / 0.14));
+    st.d += (st.target - st.d) * (1 - Math.exp(-dt / st.tau));
     const done = Math.abs(st.target - st.d) < 0.002;
     if (done) st.d = st.target;
     draw();
     const day = Math.max(0, Math.min(span, Math.round(st.d)));
     setLabel(day);
-    commit(day, done);
+    if (done || has(day)) commit(day, done);
     raf.current = done ? 0 : requestAnimationFrame(tick);
   };
   const kick = () => { if (!raf.current) { last.current = 0; raf.current = requestAnimationFrame(tick); } };
@@ -199,15 +212,22 @@ export function TimeRail({ index, asOf, open, onDay, onClose }: {
     draw();
     const day = Math.round(clamp(st.d));
     setLabel(day);
-    commit(day);
+    if (has(day)) commit(day);
   };
   const onUp = (e: React.PointerEvent) => {
     const g = drag.current;
     drag.current = null;
     const st = s.current;
     st.dragging = false;
-    if (g && !g.moved) st.target = clamp(Math.round(st.d + (RH / 2 - local(e)) / st.ppd));
-    else if (g) st.target = clamp(Math.round(st.d + (performance.now() - g.t > 100 ? 0 : (g.v * 0.998) / (1 - 0.998))));
+    st.tau = 0.14;
+    if (g && !g.moved) st.target = work(st.d + (RH / 2 - local(e)) / st.ppd);
+    else if (g) {
+      // carried on the way a scroll view decelerates, from the hand's own speed (days per ms)
+      const v = performance.now() - g.t > 100 ? 0 : g.v;
+      st.target = work(st.d + (v * 0.998) / (1 - 0.998), Math.sign(v));
+      const D = st.target - st.d;
+      if (v && D * v > 0) st.tau = Math.min(0.5, Math.max(0.12, Math.abs(D) / (Math.abs(v) * 1000)));
+    }
     kick();
   };
 
@@ -232,9 +252,10 @@ export function TimeRail({ index, asOf, open, onDay, onClose }: {
       draw();
       const day = Math.round(st.d);
       setLabel(day);
-      commit(day);
+      if (has(day)) commit(day);
       clearTimeout(settle.t);
-      settle.t = window.setTimeout(() => { st.target = clamp(Math.round(st.d)); kick(); }, 120);
+      const dir = -Math.sign(e.deltaY);
+      settle.t = window.setTimeout(() => { st.target = work(st.d, dir); st.tau = 0.14; kick(); }, 120);
     };
     // Safari's pinch comes as gesture events: over the rail it zooms time, not the canvas
     let pinch = 0;
@@ -250,9 +271,9 @@ export function TimeRail({ index, asOf, open, onDay, onClose }: {
     el.addEventListener("wheel", onWheel, { passive: false });
     for (const t of GESTURES) el.addEventListener(t, onGesture);
     return () => { el.removeEventListener("wheel", onWheel); for (const t of GESTURES) el.removeEventListener(t, onGesture); };
-  }, [span, RH]);
+  }, [span, RH, load]);
 
-  const go = (k: number) => { s.current.following = false; s.current.target = clamp(k); kick(); };
+  const go = (k: number) => { s.current.following = false; s.current.target = clamp(k); s.current.tau = 0.14; kick(); };
   const day = startOf(label);
   const name = label === 0 ? "Today" : label === 1 ? "Yesterday" : day.toLocaleDateString([], { weekday: "long" });
   const date = day.toLocaleDateString([], { month: "short", day: "numeric", year: day.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
@@ -311,7 +332,7 @@ export function TimeRail({ index, asOf, open, onDay, onClose }: {
         aria-valuemax={span}
         tabIndex={0}
         onKeyDown={(e) => {
-          const to = { ArrowUp: label + 1, ArrowDown: label - 1, PageUp: label + 7, PageDown: label - 7, Home: 0, End: span }[e.key];
+          const to = { ArrowUp: next(label, 1), ArrowDown: next(label, -1), PageUp: work(label + 7, 1), PageDown: work(label - 7, -1), Home: 0, End: work(span, -1) }[e.key];
           if (to == null) return;
           e.preventDefault(); e.stopPropagation(); go(to);
         }}
