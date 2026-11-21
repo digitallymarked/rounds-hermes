@@ -33,6 +33,8 @@ export const STORE = path.join(DATA, "store");
 export const IMG = path.join(STORE, "img");
 export const POSTS = path.join(DATA, "posts");
 export const PUSHES = path.join(DATA, "pushes");
+// each page as the tool hook caught it the moment it was published: <artifact id>.json
+export const PUBLISHED = path.join(DATA, "published");
 export const CONFIG = path.join(DATA, "config.json");
 
 const DEFAULTS = { projects: [], private: [], folders: true, home: "Studio", port: 4797, relay: false };

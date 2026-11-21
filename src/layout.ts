@@ -1,5 +1,6 @@
 import type { Commit, Index, Page, Shot, ShotSet, Thread, Topic } from "./data";
 import { clean } from "./data";
+import { dayKey } from "./days";
 
 // The canvas as an atlas. Each project is a column: its name, its days of activity, then
 // its work as groups of screens laid straight onto the paper, newest first. A group is what
@@ -18,7 +19,7 @@ const THREAD_ROW = 40;
 export const COL_GAP = 320;
 const ROW_GAP = 360;
 const WORLD_ROW_W = 10400; // columns wrap onto a new row past this: about the shape of a wide window
-const WINDOW = 21 * 864e5; // what counts as recent, back from the day being shown
+const WINDOW = 21 * 864e5; // what counts as recent, on today's canvas
 const MERGE = 45 * 60e3; // sends from one thread this close are one sitting
 const JOIN = 3 * 3600e3; // a page joins a sitting this close to its publish
 const GROUPS_PER_PROJECT = 10;
@@ -89,10 +90,11 @@ function lay(rest: Item[], sheets: Item[], reserve: number) {
   return { items, w, h: y + ROW_H, rows: row + 1, folded };
 }
 
-// The files each session changed, as of the day shown, newest first; and for each file the other
-// sessions (from `every`, the whole canvas) that changed it within a day of this one.
+// The files each session changed from `start` to the end of the day shown, newest first; and for
+// each file the other sessions (from `every`, the whole canvas) that changed it within a day of
+// this one.
 const NEAR = 864e5;
-function filesBy(index: Index, every: Index, end: number) {
+function filesBy(index: Index, every: Index, start: number, end: number) {
   const named = new Map(every.threads.map((t) => [t.id, t]));
   const others = new Map<string, { thread: string; at: number }[]>();
   for (const c of every.changed || []) {
@@ -103,7 +105,7 @@ function filesBy(index: Index, every: Index, end: number) {
   }
   const out = new Map<string, FileRow[]>();
   for (const c of index.changed || []) {
-    const mine = c.edits.filter(([at]) => at <= end);
+    const mine = c.edits.filter(([at]) => at >= start && at <= end);
     if (!mine.length) continue;
     const first = mine[0][0], last = mine[mine.length - 1][0];
     const also = new Map<string, number>();
@@ -121,11 +123,15 @@ function filesBy(index: Index, every: Index, end: number) {
   return out;
 }
 
-// With `all`, nothing ages out and no project stops at ten groups: one session's whole history.
-// `every` is the whole canvas when `index` is one session's part of it: who else changed a file.
+// Today's canvas is the last three weeks. An earlier day (`asOf`, the end of it) is that day
+// alone: what was made on it, and the sessions that ran. With `all`, nothing ages out and no
+// project stops at ten groups: one session's whole history. `every` is the whole canvas when
+// `index` is one session's part of it: who else changed a file.
 export function layout(index: Index, asOf: number | null = null, all = false, every: Index = index): { clusters: Cluster[]; w: number; h: number; nameCap: number } {
   const end = asOf ?? Date.now();
-  const start = all ? -Infinity : end - WINDOW;
+  const day = asOf != null && !all;
+  const start = all ? -Infinity : day ? new Date(end).setHours(0, 0, 0, 0) : end - WINDOW;
+  const today = dayKey(new Date(end));
   const threadById = new Map(index.threads.map((t) => [t.id, t]));
   // A topic gathers every send filed under it, across threads and days; a send no topic
   // holds yet stays its own sitting, merged with sends from its thread close in time.
@@ -181,9 +187,9 @@ export function layout(index: Index, asOf: number | null = null, all = false, ev
   });
 
   // Each session's files go on a sheet at the end of its newest group: the screens are what it
-  // made, the sheet what it changed to make them. Seen on its own, a session that only changed
-  // files has a group of its own for them.
-  const files = filesBy(index, every, end);
+  // made, the sheet what it changed to make them. Seen on its own or on an earlier day, a session
+  // that only changed files has a group of its own for them.
+  const files = filesBy(index, every, day ? start : -Infinity, end);
   const home = new Map<string, G>();
   for (const p of proj) for (const g of p.groups) {
     const by = new Set([g.thread, ...g.sets.map((s) => s.thread), ...g.items.map((it) => (it.kind === "page" ? it.page.thread : null))]);
@@ -193,7 +199,7 @@ export function layout(index: Index, asOf: number | null = null, all = false, ev
     const th = threadById.get(t);
     let g = home.get(t);
     if (!g) {
-      const p = all && th ? proj.find((p) => p.key === th.project) : null;
+      const p = (all || day) && th ? proj.find((p) => p.key === th.project) : null;
       if (!p) continue;
       g = { id: `f-${t}`, thread: t, first: rows[0].last, last: rows[0].last, caption: th!.title, topic: true, sets: [], items: [] };
       p.groups.push(g);
@@ -204,7 +210,7 @@ export function layout(index: Index, asOf: number | null = null, all = false, ev
 
   const raw = proj.map(({ key, groups }) => {
     const threads = index.threads
-      .filter((t) => t.project === key && !t.archived && !t.gone && t.at <= end + 864e5 && (all || end - t.at < WINDOW))
+      .filter((t) => t.project === key && !t.archived && !t.gone && (day ? !!t.days?.[today] : t.at <= end + 864e5 && (all || end - t.at < WINDOW)))
       .filter((t) => !groups.some((g) => g.thread === t.id))
       .sort((a, b) => b.at - a.at)
       .slice(0, 6);

@@ -8,7 +8,7 @@ import crypto from "node:crypto";
 import readline from "node:readline";
 import { execFileSync } from "node:child_process";
 
-import { HOME, DATA, STORE, IMG, POSTS, PUSHES, CLAUDE, DESKTOP_SESSIONS, projects } from "./config.mjs";
+import { HOME, DATA, STORE, IMG, POSTS, PUSHES, PUBLISHED, CLAUDE, DESKTOP_SESSIONS, projects } from "./config.mjs";
 import { filePostTopics } from "./topics.mjs";
 export { DATA, STORE, IMG };
 const TRANSCRIPTS = path.join(CLAUDE, "projects");
@@ -214,11 +214,13 @@ async function readTranscript(file, onPublish, onDay, onSend, onMeta = () => {},
         } else if (/(rounds|workbench)_(post|change)$/.test(c.name || "")) {
           posting.add(c.id);
         } else if (c.name === "Artifact" && i.file_path && /\.html?$/i.test(i.file_path) && !i.asset && (!i.action || i.action === "publish")) {
+          // a path given from the session's folder (scratch/page/index.html) is in that folder
+          const fp = i.file_path.startsWith("~/") ? path.join(HOME, i.file_path.slice(2)) : path.resolve(row.cwd || meta.cwd || HOME, i.file_path);
           pending.set(c.id, {
             session: row.sessionId,
-            filePath: i.file_path,
+            filePath: fp,
             url: typeof i.url === "string" ? i.url : null,
-            text: files.has(i.file_path) ? files.get(i.file_path) : null,
+            text: files.has(fp) ? files.get(fp) : files.has(i.file_path) ? files.get(i.file_path) : null,
             at: Date.parse(row.timestamp) || 0,
           });
         }
@@ -595,6 +597,15 @@ export async function buildIndex({ log = () => {} } = {}) {
   }
   repos.save();
 
+  // Pages the tool hook caught as they were published (hooks/tool.mjs): one written by a script
+  // the transcript can't replay, or kept in a folder that's gone since, still has what it was.
+  for (const rec of readDir(PUBLISHED)) {
+    if (!rec.id || !rec.url) continue;
+    const page = pages.get(rec.id) || { id: rec.id, url: rec.url, filePath: rec.filePath, thread: rec.session ? byCli.get(rec.session) || rec.session : null, versions: [] };
+    for (const v of rec.versions || []) if (!page.versions.some((x) => x.hash === v.hash)) page.versions.push({ at: v.at, text: null, hash: v.hash });
+    pages.set(rec.id, page);
+  }
+
   // A post the tool hook tied to its session belongs to that session's thread (the desktop
   // thread it runs in, or the session itself), even before its transcript mentions it.
   for (const p of readDir(POSTS)) if (p.session && !postThread.has(p.id)) postThread.set(p.id, byCli.get(p.session) || p.session);
@@ -631,6 +642,7 @@ export async function buildIndex({ log = () => {} } = {}) {
   const out = [];
   for (const page of pages.values()) {
     page.versions.sort((a, b) => a.at - b.at);
+    for (const v of page.versions) if (v.text == null && v.hash) try { v.text = fs.readFileSync(path.join(STORE, `${v.hash}.html`), "utf8"); } catch {}
     // The newest publish falls back to the file on disk when the transcript can't rebuild it.
     const last = page.versions[page.versions.length - 1];
     if (last.text == null) {

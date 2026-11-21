@@ -36,7 +36,7 @@ Drag to compare a screen with the one it replaced.
 
 ![A sky before and after a fix](docs/canvas-compare.jpg)
 
-Step back to any day.
+Step back to any day to see what was made on it.
 
 ![Earlier days stacked behind the current one](docs/canvas-time.jpg)
 
@@ -48,7 +48,8 @@ Claude Code deletes terminal sessions after 30 days by default. What they made s
 
 ## Set it up
 
-You need a Mac, Node 20 or newer, and Claude Code.
+You need a Mac, Node 20 or newer, and Claude Code. Rounds reads the sessions that run on your
+Mac; sessions in the cloud don't reach it.
 
 ```bash
 npx github:krispuckett/rounds init
@@ -91,7 +92,7 @@ In auto mode, Claude Code may ask you before acting on a note. Say yes and it ca
 | Key | Does |
 | --- | --- |
 | T | Timeline |
-| ← → | A day back, a day forward |
+| ← → | Back or forward through the days with work |
 | / or ⌘K | Search |
 | + − 0 | Zoom in, zoom out, fit everything |
 | Space | Hold to pan, or to see the before while comparing |

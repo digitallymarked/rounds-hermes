@@ -101,7 +101,14 @@ if (rest.includes("--demo")) {
 
 async function start() {
   await update({ quiet: true });
-  const { loadConfig, DATA } = await import("../server/config.mjs");
+  const { loadConfig, DATA, CLAUDE } = await import("../server/config.mjs");
+  // An install from before the hook kept published pages: init again adds that, asking first.
+  // Rounds never changes Claude's settings on its own.
+  try {
+    const s = JSON.parse(fs.readFileSync(path.join(CLAUDE, "settings.json"), "utf8"));
+    const ours = (s.hooks?.PostToolUse || []).filter((e) => (e.hooks || []).some((h) => OURS.test(String(h.command || ""))));
+    if (ours.length && !ours.some((e) => /\bArtifact\b/.test(e.matcher || ""))) say("To keep every page your sessions publish, even after its folder is cleared, run this once:\n  npx github:krispuckett/rounds init\n");
+  } catch {}
   const port = Number(process.env.ROUNDS_PORT || loadConfig().port || 4797);
   process.env.ROUNDS_PORT = process.env.WORKBENCH_PORT = String(port);
   if (process.platform !== "darwin") say("Rounds is made for macOS. Elsewhere it runs, with screens shown at full size and no page previews unless Chrome is found.");
@@ -180,7 +187,7 @@ async function init() {
   }
 
   // 3. the hooks: notes reach their session; posts and pushes are tied to it
-  if (await ask("Add the hooks (your notes reach their session; a push to main gets recorded)?")) {
+  if (await ask("Add the hooks (your notes reach their session; pushes to main and published pages get recorded)?")) {
     const file = path.join(CLAUDE, "settings.json");
     let settings = {};
     try { settings = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
@@ -192,7 +199,7 @@ async function init() {
     settings.hooks ||= {};
     const run = (name) => ({ type: "command", command: `node "${SELF}" hook ${name}` });
     (settings.hooks.UserPromptSubmit ||= []).push({ hooks: [run("notes")] });
-    (settings.hooks.PostToolUse ||= []).push({ matcher: "Bash|mcp__rounds__rounds_post|mcp__rounds__rounds_change", hooks: [run("tool")] });
+    (settings.hooks.PostToolUse ||= []).push({ matcher: "Bash|Artifact|mcp__rounds__rounds_post|mcp__rounds__rounds_change", hooks: [run("tool")] });
     fs.mkdirSync(CLAUDE, { recursive: true });
     fs.writeFileSync(file, JSON.stringify(settings, null, 2));
     say(`  Added to ${file}.${saved ? ` Your settings from before are in ${path.basename(backup)}.` : ""}`);

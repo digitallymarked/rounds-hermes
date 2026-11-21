@@ -368,13 +368,11 @@ export default function App() {
       if (open || searching || typing(e)) return;
       if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || e.key === "/") { e.preventDefault(); setSearching(true); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // the arrows walk the days
+      // the arrows walk the days that had work: an earlier day shows only its own, so a day
+      // with none would be a blank sheet
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();
-        const cur = new Date(asOf ?? Date.now());
-        cur.setDate(cur.getDate() + (e.key === "ArrowLeft" ? -1 : 1));
-        const t = endOfDay(cur);
-        changeDay(t >= endOfDay(new Date()) ? null : t);
+        step.current(e.key === "ArrowLeft" ? -1 : 1);
         return;
       }
       if (e.key === "t" || e.key === "T") { toggleTime(); return; }
@@ -548,6 +546,15 @@ export default function App() {
     const a = anchor.current;
     anchor.current = null;
     const n = a && world?.clusters.find((c) => c.key === a.key);
+    // Before he's moved the camera, or on a day that project had nothing, the day is fitted to
+    // the window (an earlier day is one day's work, smaller than the three weeks of today), never
+    // closer than actual size.
+    if (a && world && (!touched.current || !n)) {
+      const f = overview(), z = Math.min(f.z, 1);
+      camera.jump(z === f.z ? f : { z, x: innerWidth / 2 - (world.w / 2) * z, y: (innerHeight - 96) / 2 - (world.h / 2) * z });
+      updateView(camera.now);
+      return;
+    }
     if (!a || !n) return;
     let c = camera.now;
     if (n.x !== a.x || n.y !== a.y) {
