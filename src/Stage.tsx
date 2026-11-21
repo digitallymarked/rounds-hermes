@@ -4,6 +4,7 @@ import { diffBoxes, type Box } from "./diff";
 import { blockChanges, type Changes } from "./blocks";
 import { Glyph } from "./glyphs";
 import { reducedMotion } from "./look";
+import { closeEase } from "./motion";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Opening = { page: Page; from: Rect; hash?: string; place?: boolean };
@@ -83,13 +84,14 @@ export function Stage({ opening, index, onComment, onClosing, onClose }: {
     const r = document.querySelector(`[data-key="page-${page.id}"]`)?.getBoundingClientRect();
     const to = r ? { x: r.left, y: r.top, w: r.width, h: r.height } : from;
     const now = getComputedStyle(el);
+    const back = closeEase(flyUp.current);
     flyUp.current?.cancel();
     const a = reducedMotion() ? el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: "ease-in", fill: "forwards" }) : el.animate(
       [
         { transform: now.transform, borderRadius: now.borderRadius },
         { transform: `translate(${to.x - t.x}px, ${to.y - t.y}px) scale(${to.w / t.w}, ${to.h / t.h})`, borderRadius: `${14 * (t.w / to.w)}px / ${14 * (t.h / to.h)}px` },
       ],
-      { duration: 420, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" },
+      { easing: back.easing, duration: back.duration, fill: "forwards" },
     );
     a.onfinish = onClose;
   };

@@ -7,6 +7,7 @@ import type { Group } from "./layout";
 import { Btn, Composer, Pin } from "./Stage";
 import { Glyph } from "./glyphs";
 import { reducedMotion } from "./look";
+import { closeEase, spring } from "./motion";
 import type { Rect } from "./Stage";
 
 export type ShotOpening = { group: Group; i: number; from: Rect; place?: boolean };
@@ -29,13 +30,6 @@ const flight = (from: Rect, to: Rect) =>
 // larger lies underneath, solid, and the smaller crossfades on top, so the frame always closes
 // in on, or opens out onto, a real picture.
 
-// A critically damped spring as an easing: it leaves gently, never overshoots, and settles
-// without a long crawl. `response` is Apple's: roughly how long the move takes, in seconds.
-function spring(response: number, ms: number, n = 48) {
-  const w = (2 * Math.PI) / response, f = (t: number) => 1 - (1 + w * t) * Math.exp(-w * t), end = f(ms / 1000);
-  const pts = Array.from({ length: n + 1 }, (_, k) => (f((ms / 1000) * (k / n)) / end).toFixed(4));
-  return typeof CSS !== "undefined" && CSS.supports("transition-timing-function", "linear(0, 1)") ? `linear(${pts.join(", ")})` : "cubic-bezier(0.33, 0, 0.2, 1)";
-}
 const FRAME_MS = 620, FADE_MS = 440;
 const FRAME = spring(0.48, FRAME_MS), FADE = spring(0.34, FADE_MS);
 type Leaving = { key: string; src: string; at: Rect; id: number };
@@ -125,12 +119,13 @@ export function ShotStage({ opening, comments, gone, onComment, onStep, onClosin
     // from wherever the card is now: closed mid-flight, it turns around instead of jumping to full size
     const now = getComputedStyle(box.current!);
     const at = { transform: now.transform, borderRadius: now.borderRadius };
+    const back = closeEase(flyUp.current);
     flyUp.current?.cancel();
     const a = reducedMotion()
       ? box.current!.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: "ease-in", fill: "forwards" })
       : box.current!.animate(
         [at, { transform: flight(to, rect), borderRadius: `${10 * (rect.w / to.w)}px` }],
-        { duration: 420, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" },
+        { easing: back.easing, duration: back.duration, fill: "forwards" },
       );
     a.onfinish = onClose;
   };

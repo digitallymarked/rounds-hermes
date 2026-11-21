@@ -7,6 +7,7 @@ import { fileDir, fileName, type FilesSheet } from "./Cluster";
 import { Btn, type Rect } from "./Stage";
 import { Glyph } from "./glyphs";
 import { reducedMotion } from "./look";
+import { closeEase, openPath } from "./motion";
 
 export type FileOpening = { sheet: FilesSheet; i: number; from: Rect };
 
@@ -14,8 +15,6 @@ const pageRect = (): Rect => {
   const w = Math.min(1040, innerWidth - 2 * 64), h = innerHeight - 40 - 112;
   return { x: Math.round((innerWidth - w) / 2), y: 40, w, h };
 };
-const flight = (from: Rect, to: Rect) =>
-  `translate(${from.x - to.x}px, ${from.y - to.y}px) scale(${from.w / to.w}, ${from.h / to.h})`;
 const lines = (n: number) => String(n); // no thousands comma: in mono it takes a whole cell
 const MINUS = "−";
 
@@ -47,20 +46,32 @@ export function FileStage({ opening, onSession, onClosing, onClose }: {
     return () => { on = false; };
   }, [i]);
 
-  // The sheet grows into the page; the page's words come in once it has its size.
-  const grow = useRef<Animation | null>(null);
+  // The sheet grows into the page. The card stretches as it grows, so the page inside it is
+  // held at its own size against the stretch: the words never distort, and the growing card
+  // uncovers them from its corner. Both move by the same points in time, so they stay in step.
+  const grow = useRef<Animation[]>([]);
+  const inner = useRef<HTMLDivElement>(null);
+  type Pose = { dx: number; dy: number; sx: number; sy: number };
+  const poseOf = (r: Rect): Pose => ({ dx: r.x - rect.x, dy: r.y - rect.y, sx: r.w / rect.w, sy: r.h / rect.h });
+  const fly = (a: Pose, b: Pose, path: (u: number) => number, duration: number, ra: number, rb: number, fill: FillMode = "none") => {
+    const N = 30, lerp = (x: number, y: number, p: number) => x + (y - x) * p;
+    const frames: Keyframe[] = [], words: Keyframe[] = [];
+    for (let k = 0; k <= N; k++) {
+      const p = path(k / N), sx = lerp(a.sx, b.sx, p), sy = lerp(a.sy, b.sy, p), r = lerp(ra, rb, p);
+      frames.push({ offset: k / N, transform: `translate(${lerp(a.dx, b.dx, p)}px, ${lerp(a.dy, b.dy, p)}px) scale(${sx}, ${sy})`, borderRadius: `${r / sx}px / ${r / sy}px` });
+      words.push({ offset: k / N, transform: `scale(${1 / sx}, ${1 / sy})` });
+    }
+    return [box.current!.animate(frames, { duration, easing: "linear", fill }), inner.current!.animate(words, { duration, easing: "linear", fill })];
+  };
   useLayoutEffect(() => {
-    const a = reducedMotion()
-      ? box.current!.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease-out" })
-      : box.current!.animate(
-        [{ transform: flight(opening.from, rect), borderRadius: `${10 * (rect.w / opening.from.w)}px` }, { transform: "none", borderRadius: "14px" }],
-        { duration: 560, easing: "cubic-bezier(0.3, 0.7, 0.1, 1)" },
-      );
-    grow.current = a;
-    return () => a.cancel();
+    const as = reducedMotion()
+      ? [box.current!.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease-out" })]
+      : fly(poseOf(opening.from), { dx: 0, dy: 0, sx: 1, sy: 1 }, openPath, 560, 10, 14);
+    grow.current = as;
+    return () => as.forEach((a) => a.cancel());
   }, []);
 
-  // Back into the sheet, wherever it lies on the canvas now.
+  // Back into the sheet, wherever it lies on the canvas now, from wherever the card is.
   const close = (then?: () => void) => {
     if (closing) return;
     setClosing(true);
@@ -68,15 +79,13 @@ export function FileStage({ opening, onSession, onClosing, onClose }: {
     const el = document.querySelector(`[data-sheet="${sheet.key}"]`) as HTMLElement | null;
     const r = el?.getBoundingClientRect();
     const to = r ? { x: r.left, y: r.top, w: r.width, h: r.height } : opening.from;
-    const now = getComputedStyle(box.current!);
-    grow.current?.cancel();
-    const a = reducedMotion()
-      ? box.current!.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: "ease-in", fill: "forwards" })
-      : box.current!.animate(
-        [{ transform: now.transform, borderRadius: now.borderRadius }, { transform: flight(to, rect), borderRadius: `${10 * (rect.w / to.w)}px` }],
-        { duration: 420, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" },
-      );
-    a.onfinish = () => { onClose(); then?.(); };
+    const m = new DOMMatrix(getComputedStyle(box.current!).transform);
+    const back = closeEase(grow.current[0] || null);
+    grow.current.forEach((a) => a.cancel());
+    const as = reducedMotion()
+      ? [box.current!.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: "ease-in", fill: "forwards" })]
+      : fly({ dx: m.e, dy: m.f, sx: m.a, sy: m.d }, poseOf(to), back.path, back.duration, 14, 10, "forwards");
+    as[0].onfinish = () => { onClose(); then?.(); };
   };
   const step = (d: number) => { const j = Math.max(0, Math.min(sheet.rows.length - 1, i + d)); if (j !== i && !closing) setI(j); };
 
@@ -97,10 +106,11 @@ export function FileStage({ opening, onSession, onClosing, onClose }: {
 
       <div
         ref={box}
-        className="fixed flex flex-col overflow-hidden bg-[#fbfbfa]"
+        className="fixed overflow-hidden bg-[#fbfbfa]"
         style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, borderRadius: 14, transformOrigin: "0 0", boxShadow: "var(--shadow-stage), inset 0 0 0 0.5px rgba(21,24,29,0.12)" }}
       >
-        <div className="shrink-0 px-8 pb-4 pt-6" style={{ animation: closing ? "wb-fade-out 160ms ease-in both" : "wb-fade-in 260ms var(--ease-out) 300ms both", boxShadow: "inset 0 -0.5px 0 rgba(21,24,29,0.12)" }}>
+        <div ref={inner} className="flex flex-col" style={{ width: rect.w, height: rect.h, transformOrigin: "0 0" }}>
+        <div className="shrink-0 px-8 pb-4 pt-6" style={{ animation: closing ? "wb-fade-out 110ms ease-in 300ms both" : "wb-fade-in 220ms var(--ease-out) 40ms both", boxShadow: "inset 0 -0.5px 0 rgba(21,24,29,0.12)" }}>
           <div className="flex items-baseline gap-3">
             <span className="min-w-0 truncate text-[20px] font-[600] tracking-[-0.02em] text-[var(--ink)]">{fileName(row.file)}</span>
             <span className="min-w-0 flex-1 truncate text-[14px] text-[var(--quiet)]">{fileDir(row, repos)}</span>
@@ -120,9 +130,10 @@ export function FileStage({ opening, onSession, onClosing, onClose }: {
           )}
         </div>
 
-        <div ref={body} className="min-h-0 flex-1 overflow-auto px-8 pb-10 pt-2" style={{ animation: closing ? "wb-fade-out 160ms ease-in both" : "wb-fade-in 260ms var(--ease-out) 340ms both" }}>
+        <div ref={body} className="min-h-0 flex-1 overflow-auto px-8 pb-10 pt-2" style={{ animation: closing ? "wb-fade-out 110ms ease-in 300ms both" : "wb-fade-in 220ms var(--ease-out) 60ms both" }}>
           {failed && <p className="pt-6 text-[14px] text-[var(--muted)]">These changes couldn't be read.</p>}
           {edits?.map((e, k) => <Change key={`${i}-${k}`} e={e} />)}
+        </div>
         </div>
       </div>
 
