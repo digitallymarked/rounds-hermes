@@ -339,7 +339,9 @@ function readPosts(P, threads, postThread, pages, sets) {
       if (threadId) page.thread = threadId;
       pages.set(id, page);
     }
-    if (!p.shots?.length) continue;
+    // A change recorded with no screens (nothing visible changed) still shows: as its commits,
+    // like a push, under the session's summary. It stands for its push too (below).
+    if (!p.shots?.length && !(p.kind === "change" && p.commits?.length)) continue;
     // before screens: given with the post, or the screens of the post it replaces, by position
     const prev = p.replaces ? byId.get(p.replaces) : null;
     const before = p.before?.length ? p.before : prev?.shots || [];
@@ -350,7 +352,7 @@ function readPosts(P, threads, postThread, pages, sets) {
   }
   for (const x of readDir(PUSHES)) {
     if (P.isPrivate(x.repo, ...(x.commits || []).map((c) => c.subject))) continue;
-    // the session recorded this push itself, with screens: keep that one
+    // the session recorded this push itself (with screens or without): keep that one
     const same = (a, b) => a.startsWith(b) || b.startsWith(a);
     if (posts.some((p) => p.kind === "change" && (x.commits || []).length && x.commits.every((c) => (p.commits || []).some((pc) => same(c.sha, pc.sha))))) continue;
     sets.push({ id: x.id, thread: null, project: P.of([], x.repo), at: x.at, caption: x.summary || `Pushed to ${x.branch}`, topic: "Changes", kind: "push", shots: [], commits: x.commits, files: x.files });
