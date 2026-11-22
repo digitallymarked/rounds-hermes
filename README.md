@@ -134,6 +134,10 @@ npm run dev     # the canvas, on :4797
 npm run eval    # the whole loop with real Claude sessions
 ```
 
+A release is a version tag on GitHub: `npm run release` checks that the version in
+`package.json` is new and pushed, then tags it and writes its release notes. Copies opened with
+npx see it within a day.
+
 </details>
 
 ## License
