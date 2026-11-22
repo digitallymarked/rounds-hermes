@@ -13,7 +13,8 @@ import { execFileSync } from "node:child_process";
 const REPO = "krispuckett/rounds";
 const args = process.argv.slice(2);
 const flag = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
-const run = (cmd, a, opts = {}) => execFileSync(cmd, a, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts }).trim();
+// output shown straight to the terminal comes back as null
+const run = (cmd, a, opts = {}) => (execFileSync(cmd, a, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts }) ?? "").trim();
 const stop = (why) => { console.log(why); process.exit(1); };
 const parts = (v) => v.replace(/^v/, "").split(".").map((n) => Number(n) || 0);
 const newer = (a, b) => { const x = parts(a), y = parts(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
