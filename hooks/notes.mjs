@@ -9,6 +9,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DATA, POSTS, STORE } from "../server/config.mjs";
+import { updateNotice } from "../server/updates.mjs";
+
+// A new Rounds is said once, to the person, beside whatever notes this prompt brings to Claude.
+const notice = updateNotice();
+const done = (context) => {
+  const out = { ...(notice && { systemMessage: notice }), ...(context && { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context } }) };
+  if (!notice && !context) process.exit(0);
+  process.stdout.write(JSON.stringify(out), () => process.exit(0));
+  return new Promise(() => {}); // nothing after this runs
+};
 
 const read = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return d; } };
 let input = {};
@@ -23,7 +33,7 @@ const delivered = (c) => c.state === "sent" || fs.existsSync(path.join(SENT, `${
 // relay isn't running, and the next message here brings it.
 const relaying = (c) => { try { return Date.now() - fs.statSync(path.join(INBOX, `${c.id}.json`)).mtimeMs < 5 * 60e3; } catch { return false; } };
 const waiting = comments.filter((c) => !delivered(c) && !c.reply && !relaying(c));
-if (!waiting.length) process.exit(0);
+if (!waiting.length) await done();
 
 // this session's thread ids: itself, and any desktop thread it is the engine of
 const index = read(path.join(DATA, "index.json"), { threads: [], sets: [], pages: [] });
@@ -38,7 +48,7 @@ const madeBy = (c) => postOf(c)?.session
   || (index.sets || []).find((x) => x.thread && x.shots.some((s) => s.hash === c.hash))?.thread
   || (index.pages || []).find((x) => x.thread && x.versions.some((v) => v.hash === c.hash))?.thread;
 const notes = waiting.filter((c) => mine.has(c.thread || madeBy(c)));
-if (!notes.length) process.exit(0);
+if (!notes.length) await done();
 
 const lines = notes.map((c) => {
   const p = postOf(c);
@@ -59,4 +69,4 @@ for (const c of notes) {
   fs.writeFileSync(path.join(SENT, `${c.id}.json`), JSON.stringify({ delivery: "hook", session, at: Date.now() }));
   try { fs.unlinkSync(path.join(INBOX, `${c.id}.json`)); } catch {}
 }
-process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context } }));
+await done(context);

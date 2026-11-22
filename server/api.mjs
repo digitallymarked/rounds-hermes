@@ -11,6 +11,7 @@ import { buildIndex, keepImage, hasSips, which, DATA, STORE, IMG } from "./index
 import { pastPushes, importPushes } from "./history.mjs";
 import { applyMoves, fileTopics, filePostTopics, loadTopics } from "./topics.mjs";
 import { POSTS, projects, loadConfig } from "./config.mjs";
+import { watchReleases, versionState, runUpdate, handOver } from "./updates.mjs";
 
 const SHOTS = path.join(DATA, "shots");
 const SIZED = path.join(DATA, "sized");
@@ -256,6 +257,7 @@ async function warm() {
   } finally { warming = false; }
 }
 setTimeout(warm, 2000);
+watchReleases();
 
 // New sends get filed under topics after each index, when the command-line Claude can be
 // reached; until then they show as their own sittings.
@@ -325,6 +327,15 @@ export async function handle(req, res, next) {
             const t = (f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
             // a note added or answered changes the list; one delivered adds a file to sent/
             return json(res, { posted: t(path.join(DATA, "posted")), comments: Math.max(t(COMMENTS), t(SENT)) });
+          }
+          // which version runs, and a newer one when GitHub has it; POST brings it in and starts
+          // it, and the page reloads once the new one answers
+          if (p === "/api/version" && req.method === "GET") return json(res, versionState());
+          if (p === "/api/update" && req.method === "POST") {
+            const r = await runUpdate();
+            if (r.error) return json(res, { error: r.error }, 409);
+            res.on("finish", () => handOver(r.root));
+            return json(res, { version: r.version });
           }
           // A file dropped on the canvas: an image joins its project as a screen, an HTML file
           // as a page.

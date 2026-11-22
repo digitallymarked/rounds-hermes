@@ -65,8 +65,11 @@ open the canvas:
 npx github:krispuckett/rounds
 ```
 
-This also updates Rounds, hooks included, whenever there's a new version. If you set it up
-before 1.1, run `init` once more so it keeps every page your sessions publish.
+Opening it this way also brings in the newest Rounds, hooks included. While it stays open, it
+checks once a day, and when there's a new version an Update button shows in the dock. Press it
+and Rounds brings that version in and starts again where it was. The next Claude session you type
+in mentions a new version once too, even with the canvas closed. If you set it up before 1.1,
+run `init` once more so it keeps every page your sessions publish.
 
 To take it all out:
 
@@ -78,7 +81,8 @@ npx github:krispuckett/rounds uninstall
 
 Everything stays in `~/.rounds` on your Mac, and websites can't reach it. To sort older screens
 into topics, Rounds asks Claude Haiku through your own Claude Code, sending each one's caption, session
-name and file names.
+name and file names. Once a day it asks GitHub whether there's a newer Rounds; nothing from your
+canvas goes with it, and `"updates": false` in the config turns it off.
 
 <details>
 <summary>More</summary>
@@ -114,7 +118,8 @@ the days. Drop an image or an HTML file on the canvas to add it to a project.
 {
   "projects": [{ "key": "shop", "name": "Shop", "match": ["shop", "storefront"] }],
   "private": ["acme-internal"],
-  "port": 4797
+  "port": 4797,
+  "updates": true
 }
 ```
 

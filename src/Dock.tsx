@@ -1,7 +1,8 @@
 // The dock along the bottom: the day the canvas shows, which opens the timeline, search, and
-// while the canvas shows one session, its name, which shows everything again.
+// while the canvas shows one session, its name, which shows everything again. When a newer
+// Rounds is out, one more key at the end brings it in.
 // Panning, zooming and pinning a note need no tool: the canvas and the viewer carry them.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Glyph } from "./glyphs";
 
 export type Tool = "move" | "hand" | "comment";
@@ -26,6 +27,45 @@ function Key({ label, on, accent, onClick, children }: { label: string; on?: boo
     </button>
   );
 }
+// A newer release, as the server last heard from GitHub (server/updates.mjs). Pressing Update
+// waits while the server fetches it, then for the new version to answer, then loads it.
+type Version = { current: string; boot: string; latest: { version: string } | null };
+function useUpdate() {
+  const [v, setV] = useState<Version | null>(null);
+  const [state, setState] = useState<"ready" | "updating" | "failed">("ready");
+  const live = useRef(true);
+  const get = () => fetch("/api/version", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((x) => { if (live.current && x) setV(x); }).catch(() => {});
+  useEffect(() => {
+    live.current = true;
+    get();
+    const t = setInterval(get, 30 * 60e3);
+    return () => { live.current = false; clearInterval(t); };
+  }, []);
+  const fail = () => { setState("failed"); get(); };
+  const run = async () => {
+    let want = v?.latest?.version;
+    const was = v?.boot;
+    if (state === "updating") return;
+    if (!want) return setState("ready"); // nothing newer to try now: the key goes
+    setState("updating");
+    try {
+      const r = await fetch("/api/update", { method: "POST" });
+      const x = await r.json().catch(() => ({}));
+      if (!r.ok) { console.warn("[rounds] update:", x.error); return fail(); }
+      want = x.version || want; // the server fetches the newest it knows, which may be newer than this page heard
+    } catch {} // the server ending as it answers reads as a failed fetch; the wait below tells
+    // the first server to answer that isn't the old one is the new version, or the old one back
+    for (const until = Date.now() + 120e3; Date.now() < until; ) {
+      await new Promise((r) => setTimeout(r, 500));
+      const x: Version | null = await fetch("/api/version", { cache: "no-store" }).then((r) => r.json()).catch(() => null);
+      if (x?.current === want) { location.reload(); return; }
+      if (x && x.boot !== was) break;
+    }
+    fail();
+  };
+  return { version: v?.latest?.version ?? null, show: !!v?.latest || state === "failed", state, run };
+}
+
 // Groups part with a hairline and 8 points of air on each side; inside a group, keys sit
 // edge to edge at 44 so the pressed circle stays concentric with the dock (6 in from its ends).
 const Rule = () => <span className="mx-2 h-5 w-px shrink-0" style={{ background: "rgba(21,24,29,0.1)" }} />;
@@ -37,6 +77,9 @@ export function Dock({ hidden, timeOn, away, onTime, onSearch, session, onAll }:
 }) {
   const timeBtn = useRef<HTMLButtonElement>(null);
   const dock = useRef<HTMLDivElement>(null);
+  const update = useUpdate();
+  const updateBtn = useRef<HTMLButtonElement>(null);
+  const [updateWidth, setUpdateWidth] = useState(0);
   // a short pause before the first label; after that they follow the pointer at once
   const [tip, setTip] = useState<{ label: string; x: number } | null>(null);
   const tipTimer = useRef(0);
@@ -101,6 +144,21 @@ export function Dock({ hidden, timeOn, away, onTime, onSearch, session, onAll }:
             <Glyph name="comment" size={16} className="shrink-0" />
             <span className="min-w-0 truncate text-[13px] font-[560] tracking-[-0.01em]">{session}</span>
             <Glyph name="close" size={12} className="shrink-0 text-[var(--muted)]" />
+          </button>
+        </>
+      )}
+      {update.show && (
+        <>
+          <Rule />
+          <button
+            ref={updateBtn}
+            onClick={() => { setUpdateWidth(updateBtn.current?.offsetWidth || 0); update.run(); }}
+            aria-busy={update.state === "updating"}
+            data-tip={update.state === "failed" && update.version ? "Try again" : undefined}
+            className="flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-4 text-[13px] font-[560] tracking-[-0.01em] text-[var(--ink)] transition-transform duration-200 active:scale-95"
+            style={{ background: "var(--honey-wash)", minWidth: updateWidth || undefined, animation: "wb-chip 260ms var(--ease-out) both" }}
+          >
+            {update.state === "updating" ? "Updating…" : update.state === "failed" ? "Couldn't update" : `Update to ${update.version}`}
           </button>
         </>
       )}

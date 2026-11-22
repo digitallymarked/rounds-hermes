@@ -3,6 +3,8 @@
 // rounds --demo       open it on sample work, for a first look with nothing of yours read
 // rounds init         set it up: the folder, the MCP server, the skill, the hooks (asks first)
 // rounds update       bring the copy the hooks and the MCP server run up to this version
+// rounds path         the folder this copy runs from (how an update finds a new one)
+// rounds check        ask GitHub for the latest release now (the notes hook runs it once a day)
 // rounds uninstall    take out what init put in (your canvas data stays)
 // rounds index        read every transcript again
 // rounds mcp          the MCP server, for Claude (stdio)
@@ -63,7 +65,7 @@ async function update({ quiet = false } = {}) {
   copyApp(home);
   const skill = path.join(CLAUDE, "skills", "rounds", "SKILL.md");
   if (fs.existsSync(skill)) fs.copyFileSync(path.join(home, "skill", "SKILL.md"), skill);
-  say("Updated Rounds. Claude sessions you start from now on use the new version.");
+  say(`Claude sessions you start from now on use Rounds ${JSON.parse(fs.readFileSync(path.join(home, "package.json"), "utf8")).version}.`);
 }
 
 if (rest.includes("--demo")) {
@@ -105,7 +107,44 @@ if (rest.includes("--demo")) {
   for (const [k, v] of Object.entries({ HOME: demo, CLAUDE_HOME: empty, DESKTOP_SESSIONS: empty })) process.env[`ROUNDS_${k}`] = process.env[`WORKBENCH_${k}`] = v;
 }
 
+// From npx, the canvas runs as a child of this process. The dock's Update fetches the new release
+// and ends the child with RESTART, saying where the new copy is; this process starts that one on
+// the same port. Whatever opened Rounds (a terminal, a login item) keeps the one process it
+// started. A new version that won't start gives way to the one before.
+const RESTART = 75;
+async function supervise() {
+  let root = ROOT, prev = null, args = argv, bad = "";
+  for (;;) {
+    const began = Date.now();
+    const child = spawn(process.execPath, [path.join(root, "bin", "rounds.mjs"), ...args], {
+      stdio: ["inherit", "inherit", "inherit", "ipc"],
+      env: { ...process.env, ROUNDS_CHILD: "1", ROUNDS_RESTART: prev ? "1" : "", ROUNDS_BAD_VERSION: bad },
+    });
+    let next = null;
+    child.on("message", (m) => { if (m?.root) next = m.root; });
+    const pass = (sig) => () => child.kill(sig);
+    const sigs = ["SIGINT", "SIGTERM", "SIGHUP"].map((s) => [s, pass(s)]);
+    for (const [s, f] of sigs) process.on(s, f);
+    const code = await new Promise((r) => child.on("exit", (c, sig) => r(sig ? 0 : c ?? 0)));
+    for (const [s, f] of sigs) process.off(s, f);
+    if (code === RESTART && next && fs.existsSync(path.join(next, "bin", "rounds.mjs"))) {
+      prev = root; root = next;
+      if (!args.includes("--no-open")) args = [...args, "--no-open"];
+      continue;
+    }
+    if (prev && code !== 0 && Date.now() - began < 30e3) {
+      // and it isn't offered again; a later release is
+      try { bad = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version; } catch {}
+      say(`Rounds ${bad} didn't start, so the one before is back.`);
+      root = prev; prev = null;
+      continue;
+    }
+    process.exit(code);
+  }
+}
+
 async function start() {
+  if (fromNpx && !process.env.ROUNDS_CHILD) return supervise();
   await update({ quiet: true });
   const { loadConfig, DATA, CLAUDE } = await import("../server/config.mjs");
   // An install from before the hook kept published pages: init again adds that, asking first.
@@ -128,7 +167,13 @@ async function start() {
     execFileSync("npx", ["vite", "build", "--logLevel", "warn"], { cwd: ROOT, stdio: "inherit" });
   }
   const { serve } = await import("../server/serve.mjs");
-  await serve(port);
+  // just after an update, the old copy may still be letting go of the port
+  for (let i = 0; ; i++) {
+    try { await serve(port); break; } catch (e) {
+      if (e?.code !== "EADDRINUSE" || !process.env.ROUNDS_RESTART || i >= 20) throw e;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
   const url = `http://localhost:${port}`;
   say(`Rounds is open at ${url}`);
   if (!rest.includes("--no-open")) spawn(process.platform === "darwin" ? "open" : "xdg-open", [url], { stdio: "ignore", detached: true }).unref();
@@ -265,6 +310,8 @@ async function uninstall() {
 if (!cmd || cmd === "start") await start();
 else if (cmd === "init") await init();
 else if (cmd === "update") await update();
+else if (cmd === "path") say(ROOT);
+else if (cmd === "check") { const { checkNow } = await import("../server/updates.mjs"); await checkNow(); }
 else if (cmd === "uninstall") await uninstall();
 else if (cmd === "index") { const { buildIndex } = await import("../server/indexer.mjs"); await buildIndex({ log: say }); }
 else if (cmd === "mcp") await import("../server/mcp.mjs");
