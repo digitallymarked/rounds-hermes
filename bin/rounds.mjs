@@ -202,8 +202,18 @@ async function init() {
   say("Rounds keeps everything on this machine, in " + DATA);
   fs.mkdirSync(DATA, { recursive: true });
   if (!fs.existsSync(CONFIG)) {
-    fs.writeFileSync(CONFIG, JSON.stringify({ projects: [], private: [], folders: true, home: "Home", port: 4797 }, null, 2));
+    fs.writeFileSync(CONFIG, JSON.stringify({ projects: [], private: [], folders: true, home: "Home", port: 4797, relay: "hermes" }, null, 2));
     say(`  Wrote ${CONFIG}. Name projects or keep work private there.`);
+  }
+  if (!rest.includes("--claude")) {
+    // Rounds for Hermes: nothing is written into Hermes' config for you; here is what to add.
+    const { snippets } = await import("../server/hermes-setup.mjs");
+    say("\nAdd this to the config.yaml of each Hermes profile that should post to Rounds:\n");
+    say(snippets(ROOT, { dataDir: process.env.ROUNDS_HOME ? DATA : undefined }));
+    say("Then start the relay (carries each pinned note to its session at once):\n  node " + quote(path.join(ROOT, "bin", "rounds.mjs")) + " relay launchd install\nand open the canvas:\n  node " + quote(path.join(ROOT, "bin", "rounds.mjs")));
+    say("\n(For Claude Code instead: rounds init --claude)");
+    rl.close();
+    return;
   }
   // From npx, Rounds copies itself to a folder that lasts, for the MCP server and the hooks to run.
   let home = ROOT;
@@ -315,12 +325,30 @@ else if (cmd === "check") { const { checkNow } = await import("../server/updates
 else if (cmd === "uninstall") await uninstall();
 else if (cmd === "index") { const { buildIndex } = await import("../server/indexer.mjs"); await buildIndex({ log: say }); }
 else if (cmd === "mcp") await import("../server/mcp.mjs");
-else if (cmd === "hook") {
+else if (cmd === "relay") {
+  // rounds relay                 run the Hermes relay (foreground; launchd runs this)
+  // rounds relay status|retry <id>|launchd <install|remove|print>
+  const sub = rest[0];
+  if (!sub) { const { start: startRelay } = await import("../server/relay.mjs"); await startRelay(); }
+  else if (sub === "status") { const { status } = await import("../server/relay.mjs"); say(JSON.stringify(status(), null, 2)); }
+  else if (sub === "retry" && rest[1]) { const { retry } = await import("../server/relay.mjs"); say(retry(rest[1])); }
+  else if (sub === "launchd") {
+    const { launchd } = await import("../server/hermes-setup.mjs");
+    const { DATA } = await import("../server/config.mjs");
+    say(launchd(rest[1], ROOT, { dataDir: process.env.ROUNDS_HOME ? DATA : undefined }));
+  } else { say("rounds relay [status | retry <id> | launchd <install|remove|print>]"); process.exit(1); }
+} else if (cmd === "hermes") {
+  // rounds hermes snippet        the config.yaml lines (MCP server + hooks) for Hermes, to paste
+  const { snippets } = await import("../server/hermes-setup.mjs");
+  const { DATA } = await import("../server/config.mjs");
+  if (rest[0] === "snippet" || !rest[0]) say(snippets(ROOT, { dataDir: process.env.ROUNDS_HOME ? DATA : undefined }));
+  else { say("rounds hermes snippet"); process.exit(1); }
+} else if (cmd === "hook") {
   const name = rest[0];
-  const file = { notes: "notes", tool: "tool", push: "tool", "git-push": "git-push" }[name];
-  if (!file) { say("rounds hook <notes|tool|git-push>"); process.exit(1); }
+  const file = { notes: "notes", tool: "tool", push: "tool", "git-push": "git-push", hermes: "hermes" }[name];
+  if (!file) { say("rounds hook <notes|tool|git-push|hermes>"); process.exit(1); }
   await import(`../hooks/${file}.mjs`);
 } else {
-  say("rounds [init|update|uninstall|index|--demo]");
+  say("rounds [init|update|uninstall|index|relay|hermes|--demo]");
   process.exit(1);
 }

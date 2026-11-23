@@ -32,6 +32,11 @@ existing topic whenever an item belongs to it. Return only JSON:
 Every item appears exactly once.`;
 
 function ask(prompt) {
+  // Nothing leaves this Mac for a topic: the `claude` CLI is only ever run when the config says
+  // "claudeTopics": true (or ROUNDS_CLAUDE_TOPICS=1). Posts name their own topic; that is the default path.
+  if (!(process.env.ROUNDS_CLAUDE_TOPICS === "1" || readJSON(path.join(DATA, "config.json"), {}).claudeTopics === true)) {
+    return Promise.reject(new Error("the claude topic sorter is off (set \"claudeTopics\": true to turn it on)"));
+  }
   // The command-line Claude, run bare of his own settings (no hooks, so nothing lands in his
   // session capture) and without saving a session (so the indexer never sees it).
   return new Promise((resolve, reject) => {

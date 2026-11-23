@@ -4,7 +4,7 @@ export type Page = { id: string; url: string; title: string; thread: string | nu
 export type Thread = { id: string; title: string; cwd: string; archived: boolean; at: number; recap: string; project: string; days?: Record<string, number>; gone?: boolean };
 export type Comment = {
   id: string; page: string; hash: string; x: number; y: number; text: string; at: number;
-  thread: string | null; state: "queued" | "sent" | "kept"; delivery?: string;
+  thread: string | null; state: "queued" | "sent" | "kept"; delivery?: string; reason?: string;
   /** how it reaches its session: the desktop relay, the notes hook, or not at all */
   route?: "relay" | "hook" | "kept"; threadTitle?: string | null;
   reply?: { text: string; at: number };

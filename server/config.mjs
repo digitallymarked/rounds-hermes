@@ -7,8 +7,10 @@
 //     "folders": true,                // unmatched work is named for its repo folder
 //     "home": "Studio",               // the name for work with no project (a home folder)
 //     "port": 4797,
-//     "relay": false,                 // Claude desktop app: a relay session delivers notes at once
-//     "updates": true                 // once a day, ask GitHub for a newer Rounds (server/updates.mjs)
+//     "relay": false,                 // "hermes": the Hermes relay carries notes to their session at once (rounds relay); true: Claude desktop relay
+//     "hermes": { "profile": "x" },   // profile for sessions whose post did not record one; "bin": path of the hermes CLI
+//     "claudeTopics": false,          // true lets the `claude` CLI file topics (off: nothing leaves this Mac)
+//     "updates": false                // true: once a day, ask GitHub for a newer Rounds (server/updates.mjs)
 //   }
 // A project is matched by its rules first (thread name, folder, caption), then, with "folders"
 // on, by the git repo (or folder) the session ran in.
@@ -38,7 +40,7 @@ export const PUSHES = path.join(DATA, "pushes");
 export const PUBLISHED = path.join(DATA, "published");
 export const CONFIG = path.join(DATA, "config.json");
 
-const DEFAULTS = { projects: [], private: [], folders: true, home: "Studio", port: 4797, relay: false, updates: true };
+const DEFAULTS = { projects: [], private: [], folders: true, home: "Studio", port: 4797, relay: false, updates: false, claudeTopics: false, hermes: {} };
 
 export function loadConfig() {
   let c = {};
