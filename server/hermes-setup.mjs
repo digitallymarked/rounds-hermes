@@ -9,11 +9,19 @@ import { execFileSync } from "node:child_process";
 const LABEL = "dev.rounds.hermes-relay";
 const plistPath = () => path.join(os.homedir(), "Library/LaunchAgents", `${LABEL}.plist`);
 
+/** The path of node that survives `brew upgrade` (execPath points into the versioned Cellar). */
+const stableNode = () => {
+  for (const p of ["/opt/homebrew/bin/node", "/usr/local/bin/node"]) {
+    try { if (fs.realpathSync(p) === fs.realpathSync(process.execPath)) return p; } catch {}
+  }
+  return process.execPath;
+};
+
 export function snippets(root, { dataDir } = {}) {
-  const node = process.execPath;
+  const node = stableNode();
   const env = dataDir ? `\n    env:\n      ROUNDS_HOME: ${dataDir}` : "";
   const hook = `${node} ${path.join(root, "hooks", "hermes.mjs")}`;
-  const hookEnv = dataDir ? `ROUNDS_HOME=${dataDir} ` : "";
+  const hookEnv = dataDir ? `/usr/bin/env ROUNDS_HOME=${dataDir} ` : "";
   return `# --- config.yaml (every profile whose sessions should post to Rounds) ---
 mcp_servers:
   rounds:

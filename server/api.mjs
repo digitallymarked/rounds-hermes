@@ -228,6 +228,8 @@ function withLivePosts(idx) {
       if (!pg) idx.pages.push((pg = { id, url: "", title: p.page.title, thread: threadOf(p.session), project, at: p.at, dir: path.dirname(p.page.path), versions: [], posted: true }));
       pg.versions.push({ at: p.at, hash: p.page.hash });
       pg.at = p.at;
+      // the same page posted again by another session is that session's now (posts run oldest first)
+      if (p.session) pg.thread = threadOf(p.session);
       if (p.topic) pg.topic = p.topic;
     }
   }

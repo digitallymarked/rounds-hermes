@@ -20,6 +20,16 @@ let h = {};
 try { h = JSON.parse(fs.readFileSync(0, "utf8") || "{}"); } catch { process.exit(0); }
 const event = h.hook_event_name;
 const session = String(h.session_id || "");
+if (process.env.ROUNDS_HOOK_DEBUG || fs.existsSync(path.join(DATA, "hook-debug"))) {
+  // keys and types only, never contents: what Hermes really sends, for diagnosing a binding that did not happen
+  try {
+    fs.appendFileSync(path.join(DATA, "hook-debug.log"), JSON.stringify({
+      at: new Date().toISOString(), event, tool: h.tool_name ?? null, session: session ? "set" : "empty", profile: h.profile ?? null,
+      extra: Object.fromEntries(Object.entries(h.extra || {}).map(([k, v]) => [k, Array.isArray(v) ? `array(${v.length})` : v === null ? "null" : typeof v])),
+      resultHead: typeof h.extra?.result === "string" ? h.extra.result.slice(0, 40) : undefined,
+    }) + "\n");
+  } catch {}
+}
 if (!session) process.exit(0);
 
 try {

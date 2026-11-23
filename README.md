@@ -13,6 +13,11 @@
 I run a lot of Claude Code sessions at once and kept losing track of what each one made. Now it
 all lands in one place, and I can leave notes on it.
 
+> **Rounds for Hermes** is a fork of [krispuckett/rounds](https://github.com/krispuckett/rounds) by
+> Kris Puckett (MIT, see [LICENSE](LICENSE)). The canvas, the MCP tools and the data format are his
+> and unchanged; this fork adds a relay and hooks so [Hermes Agent](https://hermes-agent.nousresearch.com)
+> sessions work with it, and a note you pin reaches the session at once. [Jump to it](#rounds-for-hermes).
+
 ## Try it
 
 ```bash
@@ -49,13 +54,47 @@ line by line, and to see which other sessions changed it too.
 Claude Code deletes terminal sessions after 30 days by default. What they made stays on your
 canvas, and so does every page they published, even after its folder is cleared.
 
-## Set it up
+## Rounds for Hermes
+
+Pin a note on a post in the canvas and the Hermes session that made the post gets it as a message
+within about two seconds (measured once: pinned 14:14:20.7, message row 14:14:22) and runs a turn on it, with no message from you. The note is a user message in that same
+session, and the session answers with `rounds_reply`.
+
+```
+canvas pin -> ~/.rounds/inbox/<id>.json -> relay -> hermes -p <profile> chat --resume <session> -Q -q "<note>"
+                                                     |-> ~/.rounds/sent/<id>.json  (delivered | queued | failed)
+```
+
+**Set up** (nothing writes to Hermes' config for you; you paste what `rounds hermes snippet` prints):
+
+```bash
+git clone https://github.com/digitallymarked/rounds-hermes && cd rounds-hermes && npm ci
+node bin/rounds.mjs hermes snippet     # MCP server + two hooks, for each profile's config.yaml
+node bin/rounds.mjs relay launchd install   # the relay, restarts at login and if it stops
+node bin/rounds.mjs                    # the canvas
+```
+
+Set `"relay": "hermes"` in `~/.rounds/config.json`. First use of a hook asks Hermes for consent
+(`hermes -p <profile> --accept-hooks -z "OK"` once per profile, or approve it at a CLI prompt).
+Details, per-profile wiring and every failure case: [docs/hermes.md](docs/hermes.md).
+
+- `hooks/hermes.mjs` ties each post to the Hermes session and profile that made it
+  (`post_tool_call`), and is the fallback for notes: if the relay is down, the note comes in with
+  that session's next message (`pre_llm_call`). A note is delivered once, by whichever gets there first.
+- `server/relay.mjs` is the relay. It claims a note before sending (`sent/<id>.json` = `queued`),
+  so a restart never sends it twice. If the session is closed, deleted or unknown, the note
+  **stays in the inbox**, the pin says why, and `rounds relay retry <id>` sends it again.
+- The `claude` topic sorter is off (`"claudeTopics": true` turns it on) and the daily update check is
+  off by default. Posts name their own topic. Nothing leaves your Mac.
+- Tests: `npm test` (real processes against a fake `hermes`).
+
+## Set it up (Claude Code)
 
 You need a Mac, Node 20 or newer, and Claude Code. Rounds reads the sessions that run on your
 Mac; sessions in the cloud don't reach it.
 
 ```bash
-npx github:krispuckett/rounds init
+npx github:krispuckett/rounds init --claude
 ```
 
 This adds an MCP server, a skill and two hooks to Claude Code, and asks before each one. Then
@@ -79,10 +118,11 @@ npx github:krispuckett/rounds uninstall
 
 ## Privacy
 
-Everything stays in `~/.rounds` on your Mac, and websites can't reach it. To sort older screens
-into topics, Rounds asks Claude Haiku through your own Claude Code, sending each one's caption, session
-name and file names. Once a day it asks GitHub whether there's a newer Rounds; nothing from your
-canvas goes with it, and `"updates": false` in the config turns it off.
+Everything stays in `~/.rounds` on your Mac, and websites can't reach it. In this fork the
+`claude` topic sorter is off (posts name their own topic); `"claudeTopics": true` turns the original
+back on, which asks Claude Haiku through your own Claude Code, sending each screen's caption, session
+name and file names. The daily GitHub check for a newer Rounds is off unless `"updates": true`;
+nothing from your canvas goes with it.
 
 <details>
 <summary>More</summary>

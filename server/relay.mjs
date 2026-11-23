@@ -93,7 +93,7 @@ export async function deliver(id, { now = Date.now } = {}) {
   log(id, "delivering to", session, profile ? `(profile ${profile})` : "");
   try {
     const r = await inLane(session, () => run(hermesCommand({ profile, session, message: relayMessage(n) })));
-    const tail = String(r.out || "").trim().split("\n").filter(Boolean).slice(-3).join(" | ").slice(0, 300);
+    const tail = String(r.out || "").trim().split("\n").filter((l) => l.trim() && !/^⚠|Normalized model/.test(l)).slice(-3).join(" | ").slice(0, 300);
     if (r.error) return fail(r.error, PERMANENT.test(r.error));
     if (r.code !== 0 || /session not found/i.test(r.out || "")) return fail(tail || `hermes exited with ${r.code}`, PERMANENT.test(r.out || ""));
     writeSent(id, { delivery: "delivered", session, profile, at: now(), took_ms: now() - began, attempts });
