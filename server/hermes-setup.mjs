@@ -41,14 +41,21 @@ hooks:
 `;
 }
 
+/** A PATH for launchd (which starts with almost none): where `hermes` lives, plus the usual places. */
+function launchdPath() {
+  let hermes = "";
+  for (const d of (process.env.PATH || "").split(":")) { if (d && fs.existsSync(path.join(d, "hermes"))) { hermes = d; break; } }
+  return [...new Set([hermes, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].filter(Boolean))].join(":");
+}
+
 export function plist(root, { dataDir } = {}) {
   const log = path.join(dataDir || path.join(os.homedir(), ".rounds"), "relay.log");
-  const envs = { PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin", ...(dataDir ? { ROUNDS_HOME: dataDir } : {}) };
+  const envs = { PATH: launchdPath(), ...(dataDir ? { ROUNDS_HOME: dataDir } : {}) };
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>${LABEL}</string>
-  <key>ProgramArguments</key><array><string>${process.execPath}</string><string>${path.join(root, "bin", "rounds.mjs")}</string><string>relay</string></array>
+  <key>ProgramArguments</key><array><string>${stableNode()}</string><string>${path.join(root, "bin", "rounds.mjs")}</string><string>relay</string></array>
   <key>EnvironmentVariables</key><dict>${Object.entries(envs).map(([k, v]) => `<key>${k}</key><string>${v}</string>`).join("")}</dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
