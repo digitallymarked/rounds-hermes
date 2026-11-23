@@ -162,12 +162,17 @@ function sendFile(req, res, f, type, cache = false) {
 
 const readJSON = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return d; } };
 
-// A note goes to the thread that made the work. A desktop thread hears it through the relay (when on);
-// any Claude Code session through its notes hook, with its next message. Work no session made
-// keeps the note on the canvas, and the pin says so.
-// The relay is opt-in ("relay": true in config); without it a desktop thread's note goes by the
-// hook like any other.
-const route = (t) => (!t ? "kept" : t.startsWith("local_") && loadConfig().relay ? "relay" : "hook");
+// A note goes to the thread that made the work. With the relay on, it is carried there at once:
+//   "relay": "hermes"  the Hermes relay (server/relay.mjs) runs a turn in the session that made the
+//                      work, any session id; `true` is the Claude desktop relay, `local_` threads only.
+// Otherwise (or when the relay is off) a note goes by the notes hook, with the session's next
+// message. Work no session made keeps the note on the canvas, and the pin says so.
+const route = (t) => {
+  if (!t) return "kept";
+  const relay = loadConfig().relay;
+  if (relay === "hermes") return "relay";
+  return t.startsWith("local_") && relay ? "relay" : "hook";
+};
 
 // Every note with where it goes, said plainly on its pin. A note pinned before the canvas knew
 // whose post it was finds its session once the tool hook has tied the post to it; the notes
@@ -188,7 +193,11 @@ function comments(idx) {
     if (c.state === "queued" && threads.get(c.thread)?.gone) { c.state = "kept"; c.route = "kept"; }
     if (c.state === "sent") continue;
     const s = readJSON(path.join(SENT, `${c.id}.json`), null);
-    if (s) Object.assign(c, { state: "sent", delivery: s.delivery || "delivered" });
+    if (s && (s.delivery === "queued" || s.delivery === "waiting" || s.delivery === "failed")) {
+      // the relay is carrying it, or could not: the pin says so and the note is still waiting
+      Object.assign(c, { delivery: s.delivery, ...(s.reason ? { reason: s.reason } : {}) });
+      if (s.delivery === "failed") c.route = "relay";
+    } else if (s) Object.assign(c, { state: "sent", delivery: s.delivery || "delivered" });
   }
   return list;
 }
@@ -219,6 +228,8 @@ function withLivePosts(idx) {
       if (!pg) idx.pages.push((pg = { id, url: "", title: p.page.title, thread: threadOf(p.session), project, at: p.at, dir: path.dirname(p.page.path), versions: [], posted: true }));
       pg.versions.push({ at: p.at, hash: p.page.hash });
       pg.at = p.at;
+      // the same page posted again by another session is that session's now (posts run oldest first)
+      if (p.session) pg.thread = threadOf(p.session);
       if (p.topic) pg.topic = p.topic;
     }
   }
@@ -262,6 +273,7 @@ watchReleases();
 // New sends get filed under topics after each index, when the command-line Claude can be
 // reached; until then they show as their own sittings.
 function fileInBackground(idx) {
+  if (!loadConfig().claudeTopics) return; // the `claude` CLI sorter is off unless you turn it on; topics are named by the posting session
   filing ??= fileTopics(idx).catch((e) => console.log(`[rounds] topics: ${e.message}`)).finally(() => (filing = null));
 }
 

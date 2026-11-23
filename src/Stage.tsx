@@ -363,6 +363,9 @@ function whereTo(note: Comment) {
   const to = note.threadTitle ? `“${note.threadTitle}”` : "its session";
   if (note.reply) return note.threadTitle ? `“${note.threadTitle}” replied` : "Its session replied";
   if (note.state === "sent") return `Sent to ${to}`;
+  if (note.delivery === "failed") return `Couldn't reach ${to}${note.reason ? `: ${note.reason}` : ""}. The note is kept and will be tried again`;
+  if (note.delivery === "waiting") return `Waiting for ${to} to finish its current turn, then it goes`;
+  if (note.delivery === "queued" && note.route === "relay") return `Being delivered to ${to}`;
   if (note.state === "kept" || note.route === "kept") return note.thread ? "Stays here: its session is no longer on this Mac" : "Stays here: no session made this";
   if (note.route === "relay") return `On its way to ${to}`;
   return `Goes to ${to} with your next message there`;
