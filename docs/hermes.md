@@ -7,7 +7,8 @@ How a note pinned on the canvas reaches the Hermes session that made the post, a
 1. A Hermes session posts with `rounds_post`. The `post_tool_call` hook (`hooks/hermes.mjs`) writes the
    session id, the profile and `agent: "hermes"` into `posts/<id>.json`.
 2. You pin a note. The canvas writes `comments.json` and, with `"relay": "hermes"`, `inbox/<id>.json`.
-3. The relay (`rounds relay`) sees the file, claims it (`sent/<id>.json` = `queued`, with its pid), and runs
+3. The relay (`rounds relay`) sees the file and first checks that the session is not mid-turn (see
+   "A busy session" below). When it is idle, the relay claims it (`sent/<id>.json` = `queued`, with its pid), and runs
 
    ```
    hermes -p <profile> chat --resume <session> -Q -q "<message>"
@@ -82,7 +83,31 @@ node bin/rounds.mjs relay retry <id>      # send a failed note again
 | Relay stopped or killed while delivering | On restart the note is marked `failed` ("not sent again in case it arrived"), never re-sent on its own. `rounds relay retry <id>` sends it. |
 | Relay not running | The note waits in the inbox. The fallback hook brings it in with the session's next message (once). |
 | Relay restarted after delivery | Nothing is re-sent: the `delivered` record wins over any inbox file. |
-| Two notes for one session | Sent one after the other (a session runs one turn at a time). |
+| Session mid-turn (your open chat is answering, or another relay turn is running) | Not sent. `sent/<id>.json` = `waiting` with the reason, the pin says "Waiting for … to finish its current turn", the inbox file stays. Re-checked every 3 s; sent as soon as the turn ends. Uses no retry attempts. |
+| Session still busy after 30 minutes | `failed`, `permanent` (no loop), reason says so; `rounds relay retry <id>` sends it. |
+| Two notes for one session | One at a time, oldest first. The later one is `waiting` ("another note for this session is being delivered first") until the earlier turn is over. Not batched: each note keeps its own turn and its own `rounds_reply`. |
+| Relay restarted while a note waits | Still `waiting` (nothing was sent, so nothing can be duplicated); the wait keeps its start time, so the 30 minute ceiling is honest. |
+
+## A busy session
+
+The relay asks Hermes itself, read-only (`server/busy.mjs`). Hermes keeps a durable per-conversation turn
+lease in `state.db`, table `session_turn_leases` (`conversation_id`, `holder`, `acquired_at`, `expires_at`):
+every turn (desktop, CLI resume, gateway) takes it before it loads the history and releases it after the
+flush, and renews it every 60 s (TTL 300 s). Sources, Hermes 0.23.3: `agent/turn_facade_lease.py`
+(`LEASE_TTL_SECONDS`), `persistence/sqlite/authority/coordination.py` (`try_acquire_turn_lease`),
+`persistence/sqlite/conversation/_store/compression.py:620` (the key is the lineage root).
+
+Busy means: an unexpired lease row on the session or one of its compression ancestors, whose `pid=<n>`
+holder is not provably dead (the same rule Hermes uses to reclaim a lease). Read from the profile's
+`state.db` and the default `~/.hermes/state.db`, opened read-only. Only if the table does not exist (older
+Hermes) a conservative heuristic applies: newest message under 30 s old, or a user/tool row with no reply
+under 120 s old. A database that exists but cannot be read counts as busy. A session that is not in the
+database counts as idle: `hermes` answers "Session not found" itself.
+
+Limit: the check and the start of `hermes chat` are not one atomic step. If you send a message in that
+fraction of a second, Hermes' own lease makes the second turn wait for the first (it never interleaves), but
+the relay's 10 minute turn timeout still applies. `ROUNDS_BUSY_RECHECK_MS` and `ROUNDS_BUSY_MAX_MS` override
+the 3 s and 30 min (tests). `ROUNDS_HERMES_HOME` overrides `~/.hermes`.
 
 A relay turn runs in the session while you may have it open in the desktop app. The turn is written to
 the same `state.db`; whether the open chat shows the new rows without reopening it was not verified.

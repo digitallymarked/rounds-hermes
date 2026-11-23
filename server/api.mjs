@@ -193,7 +193,7 @@ function comments(idx) {
     if (c.state === "queued" && threads.get(c.thread)?.gone) { c.state = "kept"; c.route = "kept"; }
     if (c.state === "sent") continue;
     const s = readJSON(path.join(SENT, `${c.id}.json`), null);
-    if (s && (s.delivery === "queued" || s.delivery === "failed")) {
+    if (s && (s.delivery === "queued" || s.delivery === "waiting" || s.delivery === "failed")) {
       // the relay is carrying it, or could not: the pin says so and the note is still waiting
       Object.assign(c, { delivery: s.delivery, ...(s.reason ? { reason: s.reason } : {}) });
       if (s.delivery === "failed") c.route = "relay";

@@ -6,4 +6,5 @@ fs.appendFileSync(process.env.FAKE_HERMES_LOG, JSON.stringify({ at: Date.now(), 
 const mode = process.env.FAKE_HERMES_MODE || "ok";
 if (mode === "missing") { console.error("Session not found: " + process.argv[process.argv.indexOf("--resume") + 1]); process.exit(1); }
 if (mode === "slow") await new Promise((r) => setTimeout(r, 3000));
+fs.appendFileSync(process.env.FAKE_HERMES_LOG + ".end", JSON.stringify({ at: Date.now(), args: process.argv.slice(2) }) + "\n"); // the turn is over
 console.log("ok");

@@ -82,7 +82,7 @@ Details, per-profile wiring and every failure case: [docs/hermes.md](docs/hermes
   (`post_tool_call`), and is the fallback for notes: if the relay is down, the note comes in with
   that session's next message (`pre_llm_call`). A note is delivered once, by whichever gets there first.
 - `server/relay.mjs` is the relay. It claims a note before sending (`sent/<id>.json` = `queued`),
-  so a restart never sends it twice. If the session is closed, deleted or unknown, the note
+  so a restart never sends it twice, and holds it (`waiting`) while the session is mid-turn. If the session is closed, deleted or unknown, the note
   **stays in the inbox**, the pin says why, and `rounds relay retry <id>` sends it again.
 - The `claude` topic sorter is off (`"claudeTopics": true` turns it on) and the daily update check is
   off by default. Posts name their own topic. Nothing leaves your Mac.

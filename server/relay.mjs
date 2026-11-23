@@ -8,17 +8,25 @@
 // on it and answers with rounds_reply. Nothing is needed from the Hermes config but the MCP server.
 //
 // Contract (same files as the Claude relay in relay/RELAY.md, so the canvas needs nothing new):
-//   sent/<id>.json   { delivery: "queued" | "delivered" | "failed", session, profile, at, ... }
+//   sent/<id>.json   { delivery: "waiting" | "queued" | "delivered" | "failed", session, profile, at, ... }
 //   inbox/<id>.json  removed on success; kept on failure so nothing is lost
 //
 // Delivered once, even across restarts: a note is claimed by writing sent/<id>.json "queued"
 // BEFORE the turn starts. A relay that finds a "queued" claim it did not make, whose owner is gone,
 // does not send again (the turn may have run); it marks it failed and says why. `rounds relay retry
 // <id>` is the explicit way to send it again.
+//
+// Never into a busy session: before claiming, the relay asks server/busy.mjs whether the session is
+// mid-turn (Hermes' durable turn lease in state.db). If so the note is NOT sent: sent/<id>.json =
+// "waiting" with the reason, the inbox file stays, and the session is re-checked every few seconds.
+// "waiting" is not a claim (nothing was sent), so a restart simply carries on waiting. Waiting
+// does not use up retry attempts; after BUSY_MAX_MS it becomes a failed note ("retry"-able).
+// One delivery per session at a time, oldest note first: the rest wait behind it.
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { DATA, loadConfig } from "./config.mjs";
+import { sessionBusy } from "./busy.mjs";
 import { INBOX, RELAY_STATE, read, sentOf, writeSent, dropInbox, relayAlive, world, targetOf, profileOf, relayMessage } from "./notes.mjs";
 
 const POLL_MS = 500;
@@ -26,6 +34,8 @@ const BEAT_MS = 5000;
 const MAX_ATTEMPTS = 5;
 const RETRY_S = [10, 30, 90, 300, 900];
 const TURN_TIMEOUT_MS = 10 * 60e3;
+const BUSY_RECHECK_MS = Number(process.env.ROUNDS_BUSY_RECHECK_MS) || 3000;  // env: tests
+const BUSY_MAX_MS = Number(process.env.ROUNDS_BUSY_MAX_MS) || 30 * 60e3;
 const PERMANENT = /session not found|profile .* does not exist|no such file or directory|ENOENT/i;
 
 const log = (...a) => console.log(`[rounds relay ${new Date().toISOString()}]`, ...a);
@@ -50,7 +60,9 @@ function run({ bin, args }) {
   });
 }
 
-const inflight = new Set();
+const inflight = new Set();      // note ids being delivered
+const reserved = new Set();      // sessions with a delivery (or busy check) in progress: one at a time
+const recheckAt = new Map();     // session -> { until, reason, signal }: when to look at its busy state again
 
 /** Deliver one inbox file. Resolves to what happened: "delivered" | "failed" | "skipped". */
 export async function deliver(id, { now = Date.now } = {}) {
@@ -87,12 +99,33 @@ export async function deliver(id, { now = Date.now } = {}) {
   if (!session) return fail("no session is tied to this work yet (it was not posted from a Hermes session with the Rounds hook)");
   const profile = profileOf(w, n) || process.env.ROUNDS_HERMES_PROFILE || loadConfig().hermes?.profile || null;
 
+  // Waiting is not a failure and not a claim. `since` survives restarts so the ceiling is honest.
+  const wait = (reason, signal) => {
+    const since = s?.delivery === "waiting" ? s.since || s.at : now();
+    if (now() - since > BUSY_MAX_MS) {
+      writeSent(id, { delivery: "failed", session, profile, at: now(), reason: `${reason}; gave up after ${Math.round(BUSY_MAX_MS / 60e3)} minutes of waiting. Retry: rounds relay retry ${id}`, attempts: s?.attempts || 0, permanent: true });
+      log(id, "FAILED: still busy after", Math.round((now() - since) / 1000), "s");
+      return "failed";
+    }
+    if (s?.delivery !== "waiting" || s.reason !== reason) {
+      writeSent(id, { delivery: "waiting", session, profile, at: since, since, reason, signal, attempts: s?.attempts || 0 });
+      log(id, "waiting:", reason);
+    }
+    return "waiting";
+  };
+  if (reserved.has(session)) return wait("another note for this session is being delivered first", "relay");
+  const last = recheckAt.get(session);
+  if (last && last.until > now()) return wait(last.reason, last.signal);   // looked a moment ago; still busy
+  reserved.add(session);               // synchronous: nothing else for this session starts while we look
   inflight.add(id);
-  const began = now();
-  writeSent(id, { delivery: "queued", session, profile, at: began, pid: process.pid, attempts });
-  log(id, "delivering to", session, profile ? `(profile ${profile})` : "");
   try {
-    const r = await inLane(session, () => run(hermesCommand({ profile, session, message: relayMessage(n) })));
+    const b = await sessionBusy({ session, profile, now });
+    if (b.busy) { recheckAt.set(session, { until: now() + BUSY_RECHECK_MS, reason: b.reason, signal: b.signal }); return wait(b.reason, b.signal); }
+    recheckAt.delete(session);
+    const began = now();
+    writeSent(id, { delivery: "queued", session, profile, at: began, pid: process.pid, attempts });
+    log(id, "delivering to", session, profile ? `(profile ${profile})` : "");
+    const r = await run(hermesCommand({ profile, session, message: relayMessage(n) }));
     const tail = String(r.out || "").trim().split("\n").filter((l) => l.trim() && !/^⚠|Normalized model/.test(l)).slice(-3).join(" | ").slice(0, 300);
     if (r.error) return fail(r.error, PERMANENT.test(r.error));
     if (r.code !== 0 || /session not found/i.test(r.out || "")) return fail(tail || `hermes exited with ${r.code}`, PERMANENT.test(r.out || ""));
@@ -100,7 +133,7 @@ export async function deliver(id, { now = Date.now } = {}) {
     dropInbox(id);
     log(id, `delivered in ${now() - began} ms`);
     return "delivered";
-  } finally { inflight.delete(id); }
+  } finally { inflight.delete(id); reserved.delete(session); }
 }
 
 /** One pass over the inbox, oldest first. */
@@ -111,15 +144,6 @@ export async function sweep() {
   // not awaited: a long turn for one session must not hold up a note for another
   for (const f of files) deliver(f.replace(/\.json$/, "")).catch((e) => log(f, "error", e.message));
 }
-
-// Two notes for one session go one after the other: a session runs one turn at a time.
-const lanes = new Map();
-const inLane = (session, fn) => {
-  const next = (lanes.get(session) || Promise.resolve()).then(fn, fn);
-  lanes.set(session, next);
-  next.finally(() => { if (lanes.get(session) === next) lanes.delete(session); });
-  return next;
-};
 
 export function status() {
   const s = read(RELAY_STATE, null);

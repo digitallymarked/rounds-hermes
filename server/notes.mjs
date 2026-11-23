@@ -6,6 +6,7 @@
 // Whoever delivers it writes sent/<id>.json and removes the inbox file:
 //   delivery "delivered"  the relay put it in the session (the session ran a turn on it)
 //   delivery "hook"       the session's next turn brought it in (the fallback)
+//   delivery "waiting"    the session is mid-turn (or another note is going first); nothing was sent yet
 //   delivery "queued"     the relay is carrying it right now
 //   delivery "failed"     the relay could not deliver it; the inbox file stays
 import fs from "node:fs";
@@ -42,6 +43,7 @@ export function covered(c, now = Date.now()) {
   if (s) {
     if (s.delivery === "failed") return false;              // nobody delivered it: the fallback may
     if (s.delivery === "queued") return now - (s.at || 0) < 180e3; // the relay is on it (or died 3 minutes ago)
+    if (s.delivery === "waiting") return relayAlive(now);          // the relay is holding it for a busy session; if it died, the fallback may
     return true;                                            // delivered / hook / anything older
   }
   if (c.state === "sent") return true;
