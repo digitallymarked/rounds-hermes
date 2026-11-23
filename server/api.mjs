@@ -222,12 +222,13 @@ function withLivePosts(idx) {
       const before = p.before?.length ? p.before : (p.replaces && byId.get(p.replaces)?.shots) || [];
       idx.sets.push({ id: p.id, thread: threadOf(p.session), project, at: p.at, caption: p.caption, topic: p.topic, kind: p.kind, shots: p.shots, ...(before.length ? { before } : {}), ...(p.commits ? { commits: p.commits } : {}) });
     }
-    if (p.page && !pageHave.has(p.page.hash)) {
+    if (p.page) {
       const id = `post-${p.page.key}`;
       let pg = idx.pages.find((x) => x.id === id);
+      // a repost of a hash the page already has adds no version, but still hands the page over
+      if (pageHave.has(p.page.hash) && !pg) continue;
       if (!pg) idx.pages.push((pg = { id, url: "", title: p.page.title, thread: threadOf(p.session), project, at: p.at, dir: path.dirname(p.page.path), versions: [], posted: true }));
-      pg.versions.push({ at: p.at, hash: p.page.hash });
-      pg.at = p.at;
+      if (!pg.versions.some((v) => v.hash === p.page.hash)) { pg.versions.push({ at: p.at, hash: p.page.hash }); pg.at = p.at; }
       // the same page posted again by another session is that session's now (posts run oldest first)
       if (p.session) pg.thread = threadOf(p.session);
       if (p.topic) pg.topic = p.topic;
